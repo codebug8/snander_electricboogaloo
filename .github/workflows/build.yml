@@ -1,0 +1,42 @@
+name: Build
+run-name: ${{ github.actor }}
+on: [push]
+jobs:
+  setup:
+    strategy:
+      matrix:
+        eeprom_enabled: [ "true", "false" ]
+        ch341a_enabled: [ "true", "false" ]
+        mstarddc_enabled: [ "true", "false" ]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v3
+      - name: Install deps
+        run: |
+         sudo apt-get install meson pkg-config libusb-1.0-0-dev libargtable2-dev git
+         dpkg -l
+         pkg-config --list-all
+      - name: Fix subprojects
+        run: |
+         git clone https://github.com/fifteenhex/libdgpc.git
+         git clone https://github.com/fifteenhex/libch341a.git
+         git clone https://github.com/fifteenhex/libusrio.git
+        working-directory: subprojects
+      - name: Setup builddir
+        run: meson setup builddir
+      - name: Configure
+        run: meson configure -Deeprom=${{ matrix.eeprom_enabled }} -Dch341a=${{ matrix.ch341a_enabled }} -Dmstar_ddc=${{ matrix.mstarddc_enabled }}
+        working-directory: builddir
+      - name: Compile
+        run: meson compile
+        working-directory: builddir
+      - name: Test run
+        run: ./src/snander_electricboogaloo --help
+        working-directory: builddir
+      - name: Archive meson log
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: meson-log
+          path: builddir/meson-logs/meson-log.txt

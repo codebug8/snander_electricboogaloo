@@ -1,325 +1,302 @@
+//SPDX-License-Identifier: GPL-2.0-or-later
 /*
+ * Copyright (c) 2023 Daniel Palmer <daniel@thingy.jp>
  * Copyright (C) 2018-2021 McMCC <mcmcc@mail.ru>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301 USA
  */
 
-#include <stdint.h>
+#include <errno.h>
 #include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <string.h>
-#include <getopt.h>
-#include <time.h>
-#include <stdio.h>
+#include <signal.h>
 
-#include "flashcmd_api.h"
-#include "ch341a_spi.h"
-#include "spi_nand_flash.h"
+#include <dgputil.h>
+#include <spi_controller.h>
 
-struct flash_cmd prog;
-extern unsigned int bsize;
+#include "main.h"
+#include "file.h"
+#include "flash.h"
+#include "spi_flash.h"
+#include "ui.h"
 
-#ifdef EEPROM_SUPPORT
-#include "ch341a_i2c.h"
-#include "bitbang_microwire.h"
-extern struct EEPROM eeprom_info;
-extern char eepromname[12];
-extern int eepromsize;
-extern int mw_eepromsize;
-extern int org;
-#define EHELP	" -E             select I2C EEPROM {24c01|24c02|24c04|24c08|24c16|24c32|24c64|24c128|24c256|24c512|24c1024}\n" \
-		"                select Microwire EEPROM {93c06|93c16|93c46|93c56|93c66|93c76|93c86|93c96} (need SPI-to-MW adapter)\n" \
-		" -8             set organization 8-bit for Microwire EEPROM(default 16-bit) and set jumper on SPI-to-MW adapter\n" \
-		" -f <addr len>  set manual address size in bits for Microwire EEPROM(default auto)\n"
-#else
-#define EHELP	""
+#define TAG "main"
+#define main_dbg(fmt, ...) ui_printf(LOGLEVEL_DBG, TAG, fmt, ##__VA_ARGS__)
+#define main_info(fmt, ...) ui_printf(LOGLEVEL_INFO, TAG, fmt, ##__VA_ARGS__)
+#define main_err(fmt, ...) ui_printf(LOGLEVEL_ERR, TAG, fmt, ##__VA_ARGS__)
+
+#ifdef CONFIG_NEED_I2C
+#include "i2c_controller.h"
 #endif
 
-#define _VER	"1.7.2"
+#ifdef CONFIG_EEPROM
+#include "i2c_eeprom_api.h"
+#endif
 
-void title(void)
+static bool killed = false;
+
+static int do_identify(const struct flash_cntx *flash)
 {
-#ifdef EEPROM_SUPPORT
-	printf("\nSNANDer - Serial Nor/nAND/Eeprom programmeR v." _VER " by McMCC <mcmcc@mail.ru>\n\n");
-#else
-	printf("\nSNANDer - Spi Nor/nAND programmER v." _VER " by McMCC <mcmcc@mail.ru>\n\n");
-#endif
+	return flash_identify(flash);
 }
 
-void usage(void)
+static void fill_addr_len(
+		const struct flash_cntx *flash,
+		const struct ui_parsed_cmdline *cmdline,
+		uint32_t *addr, uint32_t *len)
 {
-	const char use[] =
-		"  Usage:\n"\
-		" -h             display this message\n"\
-		" -d             disable internal ECC(use read and write page size + OOB size)\n"\
-		" -I             ECC ignore errors(for read test only)\n"\
-		" -L             print list support chips\n"\
-		" -i             read the chip ID info\n"\
-		"" EHELP ""\
-		" -e             erase chip(full or use with -a [-l])\n"\
-		" -l <bytes>     manually set length\n"\
-		" -a <address>   manually set address\n"\
-		" -w <filename>  write chip with data from filename\n"\
-		" -r <filename>  read chip and save data to filename\n"\
-		" -v             verify after write on chip\n";
-	printf(use);
-	exit(0);
+	*addr = 0;
+
+	if (cmdline->have_address)
+		*addr = cmdline->address;
+
+	if (cmdline->have_len)
+		*len = cmdline->len;
+	else {
+		*len = flash->org.device_size - *addr;
+	}
 }
 
-int main(int argc, char* argv[])
+static int do_unlock(const struct flash_cntx *flash, const struct ui_parsed_cmdline *cmdline)
 {
-	int c, vr = 0, svr = 0, ret = 0;
-	char *str, *fname = NULL, op = 0;
-	unsigned char *buf;
-	int long long len = 0, addr = 0, flen = 0, wlen = 0;
-	FILE *fp;
+	uint32_t addr, len;
+	int ret;
 
-	title();
+	fill_addr_len(flash, cmdline, &addr, &len);
 
-#ifdef EEPROM_SUPPORT
-	while ((c = getopt(argc, argv, "diIhveLl:a:w:r:E:f:8")) != -1)
-#else
-	while ((c = getopt(argc, argv, "diIhveLl:a:w:r:")) != -1)
+	printf("Unlocking 0x%08x -> 0x%08x\n", addr, len);
+	flash_mark_unlock(flash, addr, len);
+	ui_print_flash_status(flash->status);
+
+	ret = flash_unlock(flash, addr, len);
+
+	printf("New lock status\n");
+	ui_print_flash_status(flash->status);
+
+	return 0;
+}
+
+static int do_lock(const struct flash_cntx *flash, const struct ui_parsed_cmdline *cmdline)
+{
+	uint32_t addr, len;
+	int ret;
+
+	fill_addr_len(flash, cmdline, &addr, &len);
+
+	printf("Locking 0x%08x -> 0x%08x\n", addr, len);
+	flash_mark_lock(flash, addr, len);
+	ui_print_flash_status(flash->status);
+
+	ret = flash_lock(flash, addr, len);
+
+	printf("New lock status\n");
+	ui_print_flash_status(flash->status);
+
+	return 0;
+}
+
+static int do_erase(const struct flash_cntx *flash, const struct ui_parsed_cmdline *cmdline)
+{
+	const struct flash_org *org = &flash->org;
+	uint32_t addr = 0, len;
+	int ret;
+
+	fill_addr_len(flash, cmdline, &addr, &len);
+
+	if (len % org->block_size) {
+		printf("Please set len = 0x%016llX multiple of the block size 0x%08X\n", len, org->block_size);
+		return -EINVAL;
+	}
+
+	ui_op_start_erase(addr, len);
+	ret = flash_erase(flash, addr, len);
+	ui_statusbar_erasedone(len, len);
+	ui_op_status(ret);
+
+	return ret;
+}
+
+static int do_read(const struct flash_cntx *flash, const struct ui_parsed_cmdline *cmdline)
+{
+	uint32_t addr = 0, len;
+	struct mmapped_file file;
+	int ret;
+
+	if (cmdline->have_len) {
+		len = cmdline->len;
+	}
+	else
+		len = flash->org.device_size;
+
+	ui_op_start_read(addr, len);
+
+	ret = file_open_and_mmap(cmdline->file, len, &file, true);
+	if (ret)
+		return ret;
+
+	ret = flash_read(flash, file.map, addr, len);
+	ui_op_status(ret);
+	file_unmap_and_close(&file);
+
+	return ret;
+}
+
+static int do_write(const struct flash_cntx *flash, const struct ui_parsed_cmdline *cmdline)
+{
+	struct mmapped_file file;
+	uint32_t addr = 0, len;
+	int ret;
+
+	if (cmdline->have_address)
+		addr = cmdline->address;
+
+	if (cmdline->have_len)
+		len = cmdline->len;
+	else {
+		ret = file_len(cmdline->file, &len);
+		if (ret)
+			return ret;
+	}
+
+	ret = file_open_and_mmap(cmdline->file, len, &file, false);
+	if (ret)
+		return ret;
+
+	ui_op_start_write(addr, len);
+
+	ret = flash_write(flash, file.map, addr, len);
+	ui_op_status(ret);
+
+	if(!ret && cmdline->verify) {
+		ret = flash_verify(flash, file.map, addr, len);
+		ui_op_status(ret);
+	}
+
+	file_unmap_and_close(&file);
+
+	return ret;
+}
+
+#ifdef CONFIG_EEPROM
+static const struct i2c_controller *i2c_controller = NULL;
 #endif
-	{
-		switch(c)
-		{
-#ifdef EEPROM_SUPPORT
-			case 'E':
-				if ((eepromsize = parseEEPsize(optarg, &eeprom_info)) > 0) {
-					memset(eepromname, 0, sizeof(eepromname));
-					strncpy(eepromname, optarg, 10);
-					if (len > eepromsize) {
-						printf("Error set size %lld, max size %d for EEPROM %s!!!\n", len, eepromsize, eepromname);
-						exit(0);
-					}
-				} else if ((mw_eepromsize = deviceSize_3wire(optarg)) > 0) {
-					memset(eepromname, 0, sizeof(eepromname));
-					strncpy(eepromname, optarg, 10);
-					org = 1;
-					if (len > mw_eepromsize) {
-						printf("Error set size %lld, max size %d for EEPROM %s!!!\n", len, mw_eepromsize, eepromname);
-						exit(0);
-					}
-				} else {
-					printf("Unknown EEPROM chip %s!!!\n", optarg);
-					exit(0);
-				}
-				break;
-			case '8':
-				if (mw_eepromsize <= 0)
-				{
-					printf("-8 option only for Microwire EEPROM chips!!!\n");
-					exit(0);
-				}
-				org = 0;
-				break;
-			case 'f':
-				if (mw_eepromsize <= 0)
-				{
-					printf("-f option only for Microwire EEPROM chips!!!\n");
-					exit(0);
-				}
-				str = strdup(optarg);
-				fix_addr_len = strtoll(str, NULL, *str && *(str + 1) == 'x' ? 16 : 10);
-				if (fix_addr_len > 32) {
-						printf("Address len is very big!!!\n");
-						exit(0);
-				}
-				break;
+static const struct spi_controller *spi_controller = NULL;
+
+static void cleanup(void)
+{
+#ifdef CONFIG_EEPROM
+	if (i2c_controller)
+		i2c_controller_shutdown(i2c_controller);
 #endif
-			case 'I':
-				ECC_ignore = 1;
-				break;
-			case 'd':
-				ECC_fcheck = 0;
-				_ondie_ecc_flag = 0;
-				break;
-			case 'l':
-				str = strdup(optarg);
-				len = strtoll(str, NULL, *str && *(str + 1) == 'x' ? 16 : 10);
-				break;
-			case 'a':
-				str = strdup(optarg);
-				addr = strtoll(str, NULL, *str && *(str + 1) == 'x' ? 16 : 10);
-				break;
-			case 'v':
-				vr = 1;
-				break;
-			case 'i':
-			case 'e':
-				if(!op)
-					op = c;
-				else
-					op = 'x';
-				break;
-			case 'r':
-			case 'w':
-				if(!op) {
-					op = c;
-					fname = strdup(optarg);
-				} else
-					op = 'x';
-				break;
-			case 'L':
-				support_flash_list();
-				exit(0);
-			case 'h':
-			default:
-				usage();
+
+	if (spi_controller)
+		spi_controller_shutdown(spi_controller);
+}
+
+bool should_abort(void)
+{
+	return killed;
+}
+
+static void sigterm(int sig)
+{
+	printf("We got killed, aborting..\n");
+
+	killed = true;
+}
+
+static int init_eeprom(struct flash_cntx *flash, struct ui_parsed_cmdline *cmdline)
+{
+#ifdef CONFIG_EEPROM
+	int ret;
+
+	if (cmdline->eepromid) {
+		i2c_controller = i2c_controller_by_name(cmdline->programmer);
+		if (i2c_controller == NULL) {
+			main_err("Failed to find i2c controller for EEPROM operation\n");
+			return -ENODEV;
 		}
+
+		ret = i2c_controller_init(i2c_controller, ui_printf, NULL);
+		if (ret) {
+			main_err("Failed to init i2c controller for EEPROM operation: %d\n", ret);
+			return ret;
+		}
+
+		ret = i2c_eeprom_init(i2c_controller, flash, cmdline);
+		if (ret) {
+			main_err("Failed to init i2c EEPROM for EEPROM operation: %d\n", ret);
+			return ret;
+		}
+
+		main_dbg("Ready for EEPROM operation\n");
+		return 0;
 	}
 
-	if (op == 0) usage();
+	return -ENODEV;
+#else
+	return -ENODEV;
+#endif
+}
+int main(int argc, char** argv)
+{
+	int ret;
+	struct ui_parsed_cmdline cmdline;
 
-	if (op == 'x' || (ECC_ignore && !ECC_fcheck) || (op == 'w' && ECC_ignore)) {
-		printf("Conflicting options, only one option at a time.\n\n");
-		return -1;
-	}
+	signal(SIGINT, sigterm);
 
-	if (ch341a_spi_init() < 0) {
+	struct flash_cntx flash = { 0 };
+
+
+	ui_title();
+
+	ret = ui_handle_cmdline(argc, argv, &cmdline);
+	if (ret || cmdline.action == UI_ACTION_NONE)
+		return ret;
+
+	/* Check for EEPROM */
+	ret = init_eeprom(&flash, &cmdline);
+	if (!ret)
+		goto do_action;
+
+	/* SPI mode */
+	spi_controller = spi_controller_by_name(cmdline.programmer);
+	if (spi_controller == NULL)
+		return -ENODEV;
+
+	if (spi_controller_init(spi_controller, ui_printf, cmdline.connstring) < 0) {
 		printf("Programmer device not found!\n\n");
 		return -1;
 	}
 
-	if((flen = flash_cmd_init(&prog)) <= 0)
-		goto out;
-
-#ifdef EEPROM_SUPPORT
-	if ((eepromsize || mw_eepromsize) && op == 'i') {
-		printf("Programmer not supported auto detect EEPROM!\n\n");
-		goto out;
-	}
-#else
-	if (op == 'i') goto out;
-#endif
-
-	if (op == 'e') {
-		printf("ERASE:\n");
-		if(addr && !len)
-			len = flen - addr;
-		else if(!addr && !len) {
-			len = flen;
-			printf("Set full erase chip!\n");
-		}
-		if(len % bsize) {
-			printf("Please set len = 0x%016llX multiple of the block size 0x%08X\n", len, bsize);
-			goto out;
-		}
-		printf("Erase addr = 0x%016llX, len = 0x%016llX\n", addr, len);
-		ret = prog.flash_erase(addr, len);
-		if(!ret)
-			printf("Status: OK\n");
-		else
-			printf("Status: BAD(%d)\n", ret);
-		goto out;
+	ret = spi_flash_init(spi_controller, &flash, &cmdline);
+	if (ret) {
+		printf("Failed to init spi flash: %d\n", ret);
+		return ret;
 	}
 
-	if ((op == 'r') || (op == 'w')) {
-		if(addr && !len)
-			len = flen - addr;
-		else if(!addr && !len) {
-			len = flen;
-		}
-		buf = (unsigned char *)malloc(len + 1);
-		if (!buf) {
-			printf("Malloc failed for read buffer.\n");
-			goto out;
-		}
+do_action:
+	switch (cmdline.action) {
+	case UI_ACTION_NONE:
+		break;
+	case UI_ACTION_IDENTIFY:
+		ret = do_identify(&flash);
+		break;
+	case UI_ACTION_UNLOCK:
+		ret = do_unlock(&flash, &cmdline);
+		break;
+	case UI_ACTION_LOCK:
+		ret = do_lock(&flash, &cmdline);
+		break;
+	case UI_ACTION_ERASE:
+		ret = do_erase(&flash, &cmdline);
+		break;
+	case UI_ACTION_READ:
+		ret = do_read(&flash, &cmdline);
+		break;
+	case UI_ACTION_WRITE:
+		ret = do_write(&flash, &cmdline);
+		break;
 	}
 
-	if (op == 'w') {
-		printf("WRITE:\n");
-		fp = fopen(fname, "rb");
-		if (!fp) {
-			printf("Couldn't open file %s for reading.\n", fname);
-			free(buf);
-			goto out;
-		}
-		wlen = fread(buf, 1, len, fp);
-		if (ferror(fp)) {
-			printf("Error reading file [%s]\n", fname);
-			if (fp)
-				fclose(fp);
-			free(buf);
-			goto out;
-		}
-		if(len == flen)
-			len = wlen;
-		printf("Write addr = 0x%016llX, len = 0x%016llX\n", addr, len);
-		ret = prog.flash_write(buf, addr, len);
-		if(ret > 0) {
-			printf("Status: OK\n");
-			if (vr) {
-				op = 'r';
-				svr = 1;
-				printf("VERIFY:\n");
-				goto very;
-			}
-		}
-		else
-			printf("Status: BAD(%d)\n", ret);
-		fclose(fp);
-		free(buf);
-	}
+	cleanup();
 
-very:
-	if (op == 'r') {
-		if (!svr) printf("READ:\n");
-		else memset(buf, 0, len);
-		printf("Read addr = 0x%016llX, len = 0x%016llX\n", addr, len);
-		ret = prog.flash_read(buf, addr, len);
-		if (ret < 0) {
-			printf("Status: BAD(%d)\n", ret);
-			free(buf);
-			goto out;
-		}
-		if (svr) {
-			unsigned char ch1;
-			int i = 0;
-
-			fseek(fp, 0, SEEK_SET);
-			ch1 = (unsigned char)getc(fp);
-
-			while ((ch1 != EOF) && (i < len - 1) && (ch1 == buf[i++]))
-				ch1 = (unsigned char)getc(fp);
-
-			if (ch1 == buf[i])
-				printf("Status: OK\n");
-			else
-				printf("Status: BAD\n");
-			fclose(fp);
-			free(buf);
-			goto out;
-		}
-		fp = fopen(fname, "wb");
-		if (!fp) {
-			printf("Couldn't open file %s for writing.\n", fname);
-			free(buf);
-			goto out;
-		}
-		fwrite(buf, 1, len, fp);
-		if (ferror(fp))
-			printf("Error writing file [%s]\n", fname);
-		fclose(fp);
-		free(buf);
-		printf("Status: OK\n");
-	}
-
-out:
-	ch341a_spi_shutdown();
 	return 0;
 }
