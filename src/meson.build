@@ -41,8 +41,4 @@ if need_i2c
 	add_project_arguments('-DCONFIG_NEED_I2C', language : 'c')
 endif
 
-if get_option('debug_i2c')
-	add_project_arguments('-DCONFIG_DEBUG_I2C', language : 'c')
-endif
-
 executable('snander_electricboogaloo', src, dependencies: deps, install : true)
