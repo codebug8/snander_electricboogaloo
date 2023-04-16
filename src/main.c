@@ -23,7 +23,8 @@
 #define main_err(fmt, ...) ui_printf(LOGLEVEL_ERR, TAG, fmt, ##__VA_ARGS__)
 
 #ifdef CONFIG_NEED_I2C
-#include "i2c_controller.h"
+#include <i2c_controller.h>
+#include "i2c_controller_local.h"
 #endif
 
 #ifdef CONFIG_EEPROM

@@ -19,9 +19,6 @@ need_i2c = false
 if get_option('ch341a')
 	deps += [ libch341a_dep ]
 	add_project_arguments('-DCONFIG_CH341A', language : 'c')
-	if get_option('debug_ch341a')
-		add_project_arguments('-DCONFIG_DEBUG_CH341A', language : 'c')
-	endif
 endif
 
 if get_option('mstar_ddc')
