@@ -9,7 +9,9 @@
 #include <signal.h>
 
 #include <dgputil.h>
+
 #include <spi_controller.h>
+#include "spi_controller_local.h"
 
 #include "main.h"
 #include "file.h"

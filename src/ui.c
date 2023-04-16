@@ -13,7 +13,9 @@
 #include "ui.h"
 #include "timer.h"
 
-#include "spi_controller.h"
+#include <spi_controller.h>
+#include "spi_controller_local.h"
+
 #include "spi_flash.h"
 #include "spi_nand_flash.h"
 #include "spi_nor_flash.h"
