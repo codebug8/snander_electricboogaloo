@@ -19,6 +19,7 @@
 #include <spi_controller.h>
 
 #include "ui.h"
+#include "i2c_controller_local.h"
 
 #define TAG "mstarddc"
 
