@@ -18,4 +18,6 @@ int mstarddc_spi_send_command(unsigned int writecnt,
 int mstarddc_enable_pins(bool enable);
 int mstarddc_config_stream(unsigned int speed);
 
+extern const struct spi_controller mstarddc_spictrl;
+
 #endif /* __MSTARDDC_SPI_H__ */

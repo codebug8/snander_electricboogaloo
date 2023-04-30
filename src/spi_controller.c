@@ -13,6 +13,10 @@
 #include <libch341a.h>
 #endif
 
+#ifdef CONFIG_MSTAR_DDC
+#include "mstarddc_spi.h"
+#endif
+
 static const struct spi_controller *spi_controllers[] = {
 #ifdef CONFIG_CH341A
 	&ch341a_spi,
