@@ -19,12 +19,16 @@
 #define _SPI_NAND_OOB_SIZE_120BYTE			0x78
 #define _SPI_NAND_OOB_SIZE_128BYTE			0x80
 #define _SPI_NAND_OOB_SIZE_256BYTE			0x100
-#define _SPI_NAND_BLOCK_SIZE_128KBYTE			0x20000
-#define _SPI_NAND_BLOCK_SIZE_256KBYTE			0x40000
-#define _SPI_NAND_CHIP_SIZE_512MBIT			0x04000000
-#define _SPI_NAND_CHIP_SIZE_1GBIT			0x08000000
-#define _SPI_NAND_CHIP_SIZE_2GBIT			0x10000000
-#define _SPI_NAND_CHIP_SIZE_4GBIT			0x20000000
+
+/* Block sizes */
+#define SPI_NAND_BLOCK_SIZE_128KBYTE			0x20000
+#define SPI_NAND_BLOCK_SIZE_256KBYTE			0x40000
+
+/* Device sizes */
+#define SPI_NAND_DEVICE_SIZE_512MBIT			0x04000000
+#define SPI_NAND_DEVICE_SIZE_1GBIT			0x08000000
+#define SPI_NAND_DEVICE_SIZE_2GBIT			0x10000000
+#define SPI_NAND_DEVICE_SIZE_4GBIT			0x20000000
 
 /* Bitwise */
 #define SPI_NAND_FLASH_FEATURE_NONE		( 0x00 )
@@ -36,20 +40,20 @@ typedef enum{
 	SPI_NAND_FLASH_READ_DUMMY_BYTE_PREPEND,
 	SPI_NAND_FLASH_READ_DUMMY_BYTE_APPEND,
 	SPI_NAND_FLASH_READ_DUMMY_BYTE_DEF_NO
-} SPI_NAND_FLASH_READ_DUMMY_BYTE_T;
+} spi_nand_dummy_byte_type;
 
 typedef enum{
 	SPI_NAND_FLASH_READ_SPEED_MODE_SINGLE = 0,
 	SPI_NAND_FLASH_READ_SPEED_MODE_DUAL,
 	SPI_NAND_FLASH_READ_SPEED_MODE_QUAD,
 	SPI_NAND_FLASH_READ_SPEED_MODE_DEF_NO
-} SPI_NAND_FLASH_READ_SPEED_MODE_T;
+} spi_nand_read_mode;
 
 typedef enum{
 	SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE = 0,
 	SPI_NAND_FLASH_WRITE_SPEED_MODE_QUAD,
 	SPI_NAND_FLASH_WRITE_SPEED_MODE_DEF_NO
-} SPI_NAND_FLASH_WRITE_SPEED_MODE_T;
+} spi_nand_write_mode;
 
 struct spi_nand_flash_oobfree{
 	unsigned long offset;
@@ -61,7 +65,7 @@ struct spi_nand_flash_ooblayout
 	struct spi_nand_flash_oobfree oobfree[SPI_NAND_FLASH_OOB_FREE_ENTRY_MAX];
 };
 
-struct spi_nand_priv {
+struct spi_nand_id {
 	/* Basic chip info */
 	uint8_t	mfr_id;
 	uint8_t dev_id;
@@ -74,30 +78,19 @@ struct spi_nand_priv {
 	/* Spare Area (OOB) Size */
 	uint32_t oob_size;
 
-	/*
-	 * This is either the size of the total data area
-	 * or the size of the total data and oob area depending
-	 * on the command line flags.
-	 */
-	uint32_t working_size;
-
-	SPI_NAND_FLASH_READ_DUMMY_BYTE_T dummy_mode;
-	SPI_NAND_FLASH_READ_SPEED_MODE_T read_mode;
-	SPI_NAND_FLASH_WRITE_SPEED_MODE_T write_mode;
+	spi_nand_dummy_byte_type dummy_mode;
+	spi_nand_read_mode read_mode;
+	spi_nand_write_mode write_mode;
 	const struct spi_nand_flash_ooblayout *oob_free_layout;
+
 	uint32_t feature;
 
-	/* lock handling */
-	int (*unlock)(void);
-
 	/* ecc handling */
-	bool ecc_disable;
-	bool ecc_ignore;
 	bool (*ecc_ok)(uint8_t status);
 
-	/* This is a scratch buffer to use when working with pages */
-	size_t page_buffer_sz;
-	uint8_t *page_buffer;
+	/* write protection handling */
+	int (*fill_bp_status)(uint8_t status_reg, struct flash_status *flash_status);
+	int (*set_bp_from_status)(uint8_t *status_reg, struct flash_status *flash_status);
 };
 
 /* SPI NAND Manufacturers ID */
@@ -206,18 +199,6 @@ struct spi_nand_priv {
 #define _SPI_NAND_DEVICE_ID_TYM25D1GA03		0x03
 #define _SPI_NAND_DEVICE_ID_XCSP1AAWHNT		0x01
 
-/*****************************[ Notice]******************************/
-/* If new spi nand chip have page size more than 4KB,  or oob size more than 256 bytes,  than*/
-/* it will need to adjust the #define of _SPI_NAND_PAGE_SIZE and _SPI_NAND_OOB_SIZE */
-/*****************************[ Notice]******************************/
-
-static bool spi_nand_ecc_ok_winbond(uint8_t status) {
-	uint8_t ecc_status = status >> 4 & 0x3;
-
-	/* ecc status value bigger than 2 shows uncorrectable errors */
-	return (ecc_status < 0x2);
-}
-
-int spi_nand_flash_foreach(int (*cb)(const struct spi_nand_priv *flash_info, void *data), void *data);
+int spi_nand_flash_foreach(int (*cb)(const struct spi_nand_id *flash_info, void *data), void *data);
 
 #endif /* SRC_SPI_NAND_IDS_H_ */

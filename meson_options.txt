@@ -2,4 +2,6 @@ option('ch341a', type : 'boolean', value : false)
 option('mstar_ddc', type : 'boolean', value : false)
 option('eeprom', type : 'boolean', value : false)
 option('microwire', type : 'boolean', value : false)
+
+option('debug_spi_nand', type : 'boolean', value : false)
 option('debug_mstar_ddc', type : 'boolean', value : false)

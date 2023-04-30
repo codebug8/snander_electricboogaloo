@@ -20,6 +20,30 @@ struct flash_region {
 	bool want_to_unlock;
 };
 
+static inline void flash_region_init(struct flash_region *region, uint32_t *addr_start, uint32_t *addr_end)
+{
+	region->addr_start = addr_start;
+	region->addr_end = addr_end;
+	region->lockable = false;
+	region->locked = false;
+	region->want_to_lock = false;
+	region->want_to_unlock = false;
+}
+
+static inline void flash_region_update_status_to_locked(struct flash_region *region)
+{
+	region->locked = true;
+	region->want_to_lock = false;
+	region->want_to_unlock = false;
+}
+
+static inline void flash_region_update_status_to_unlocked(struct flash_region *region)
+{
+	region->locked = false;
+	region->want_to_lock = false;
+	region->want_to_unlock = false;
+}
+
 struct flash_status {
 	int num_regions;
 	struct flash_region regions[];

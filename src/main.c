@@ -122,6 +122,9 @@ static int do_read(const struct flash_cntx *flash, const struct ui_parsed_cmdlin
 	struct mmapped_file file;
 	int ret;
 
+	if (cmdline->have_address)
+		addr = cmdline->address;
+
 	if (cmdline->have_len) {
 		len = cmdline->len;
 	}

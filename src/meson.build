@@ -37,7 +37,7 @@ if get_option('mstar_ddc')
 	need_i2c = true
 	add_project_arguments('-DCONFIG_MSTAR_DDC', language : 'c')
 	if get_option('debug_mstar_ddc')
-	add_project_arguments('-DCONFIG_DEBUG_MSTAR_DDC', language : 'c')
+		add_project_arguments('-DCONFIG_DEBUG_MSTAR_DDC', language : 'c')
 endif
 endif
 
@@ -50,6 +50,10 @@ endif
 if need_i2c	
 	src += ['i2c_controller.c']
 	add_project_arguments('-DCONFIG_NEED_I2C', language : 'c')
+endif
+
+if get_option('debug_spi_nand')
+	add_project_arguments('-DCONFIG_DEBUG_SPI_NAND', language : 'c')
 endif
 
 executable('snander_electricboogaloo', src, dependencies: deps, install : true)

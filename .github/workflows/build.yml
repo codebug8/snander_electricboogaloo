@@ -22,6 +22,7 @@ jobs:
          git clone https://github.com/fifteenhex/libdgpc.git
          git clone https://github.com/fifteenhex/libch341a.git
          git clone https://github.com/fifteenhex/libusrio.git
+         git clone https://github.com/fifteenhex/libebogroll.git
         working-directory: subprojects
       - name: Setup builddir
         run: meson setup builddir

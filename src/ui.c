@@ -65,7 +65,7 @@ static void ui_print_spi_controller(const struct spi_controller *spi_controller)
 		printf("\t%s\n", spi_controller->connstring_format(spi_controller));
 }
 
-static int ui_print_spi_nand(const struct spi_nand_priv *flash_info, void *data)
+static int ui_print_spi_nand(const struct spi_nand_id *flash_info, void *data)
 {
 	printf("%s\n", flash_info->name);
 

@@ -643,9 +643,10 @@ int spi_nor_init(const struct spi_controller *spi_controller, struct flash_cntx 
 
 	for (int i = 0; i < flash->status->num_regions; i++) {
 		struct flash_region *region = &flash->status->regions[i];
+		uint32_t addr_start = spi_chip_info->sector_size * i;
+		uint32_t addr_end = (addr_start + spi_chip_info->sector_size) - 1;
 
-		region->addr_start = spi_chip_info->sector_size * i;
-		region->addr_end = (region->addr_start + spi_chip_info->sector_size) - 1;
+		flash_region_init(region, addr_start, addr_end);
 	}
 
 	if (spi_chip_info->fill_bp_status) {
