@@ -95,6 +95,8 @@ static inline bool flash_contains_protected_blocks(const struct flash_cntx *flas
 
 static inline void flash_mark_unlock(const struct flash_cntx *flash, uint32_t offset, uint32_t len)
 {
+	assert(flash->status);
+
 	/* Update the regions to mark the places that we want to unlock */
 	for (int i = 0; i < flash->status->num_regions; i++) {
 		struct flash_region *region = &flash->status->regions[i];

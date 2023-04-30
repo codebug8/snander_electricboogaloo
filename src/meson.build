@@ -14,6 +14,7 @@ src = [
        'spi_flash.c',
        'spi_controller.c',
        'spi_nand_flash.c',
+       'spi_nand_ids.c',
        'spi_nor_flash.c',
        'spi_nor_ids.c',
        'ui.c',

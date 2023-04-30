@@ -65,9 +65,11 @@ static void ui_print_spi_controller(const struct spi_controller *spi_controller)
 		printf("\t%s\n", spi_controller->connstring_format(spi_controller));
 }
 
-static void ui_print_spi_nand(const struct spi_nand_priv *flash_info)
+static int ui_print_spi_nand(const struct spi_nand_priv *flash_info, void *data)
 {
 	printf("%s\n", flash_info->name);
+
+	return 0;
 }
 
 static void ui_print_spi_nor(const struct chip_info *flash_info)
@@ -78,7 +80,7 @@ static void ui_print_spi_nor(const struct chip_info *flash_info)
 static void ui_print_spi_flash_help(void)
 {
 	printf("Supported SPI NAND parts\n");
-	spi_nand_flash_foreach(ui_print_spi_nand);
+	spi_nand_flash_foreach(ui_print_spi_nand, NULL);
 	printf("\n");
 	printf("Supported SPI NOR parts\n");
 	spi_nor_flash_foreach(ui_print_spi_nor);
@@ -518,6 +520,9 @@ void ui_op_status(int rc)
 void ui_print_flash_status(struct flash_status *status)
 {
 	const int perrow = 8;
+
+	if (!status)
+		return;
 
 	printf("Flash status:\n");
 	printf("u - block is unlocked, l - block is locked, +/- - lock is going to be added or removed\n");

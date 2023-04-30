@@ -45,21 +45,6 @@
 #define _SPI_NAND_VAL_ERASE_FAIL			0x4	/* E_FAIL = Erase Fail */
 #define _SPI_NAND_VAL_PROGRAM_FAIL			0x8	/* P_FAIL = Program Fail */
 
-/* SPI NAND Size Define */
-#define _SPI_NAND_PAGE_SIZE_512				0x0200
-#define _SPI_NAND_PAGE_SIZE_2KBYTE			0x0800
-#define _SPI_NAND_PAGE_SIZE_4KBYTE			0x1000
-#define _SPI_NAND_OOB_SIZE_64BYTE			0x40
-#define _SPI_NAND_OOB_SIZE_120BYTE			0x78
-#define _SPI_NAND_OOB_SIZE_128BYTE			0x80
-#define _SPI_NAND_OOB_SIZE_256BYTE			0x100
-#define _SPI_NAND_BLOCK_SIZE_128KBYTE			0x20000
-#define _SPI_NAND_BLOCK_SIZE_256KBYTE			0x40000
-#define _SPI_NAND_CHIP_SIZE_512MBIT			0x04000000
-#define _SPI_NAND_CHIP_SIZE_1GBIT			0x08000000
-#define _SPI_NAND_CHIP_SIZE_2GBIT			0x10000000
-#define _SPI_NAND_CHIP_SIZE_4GBIT			0x20000000
-
 /* Others Define */
 #define _SPI_NAND_LEN_ONE_BYTE			(1)
 #define _SPI_NAND_LEN_TWO_BYTE			(2)
@@ -82,6 +67,15 @@
 #define SPI_NAND_OTP_PAGE_UNIQUEID		0x0
 #define SPI_NAND_UNIQUEID_LEN			32
 #define SPI_NAND_OTP_PAGE_PARAMETERPAGE	0x1
+
+#define SPI_NAND_SR1_TB				bit(2)
+#define SPI_NAND_SR1_BP0			bit(3)
+#define SPI_NAND_SR1_BP1			bit(4)
+#define SPI_NAND_SR1_BP2			bit(5)
+#define SPI_NAND_SR1_BP3			bit(6)
+
+#define SPI_NAND_SR1_BP_MASK			(SPI_NAND_SR1_BP0 | SPI_NAND_SR1_BP1 | SPI_NAND_SR1_BP2 | SPI_NAND_SR1_BP3)
+#define SPI_NAND_SR1_BP_SHIFT			3
 
 static const uint8_t spi_nand_parameter_page_signature[] = { 0x4f, 0x4e, 0x46, 0x49 };
 

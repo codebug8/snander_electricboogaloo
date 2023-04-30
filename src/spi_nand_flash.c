@@ -765,7 +765,7 @@ static int spi_nand_erase_block (const struct flash_cntx *cntx, uint32_t block_i
 {
 	PREAMBLE(cntx);
 	uint8_t status;
-	SPI_NAND_FLASH_RTN_T rtn_status = SPI_NAND_FLASH_RTN_NO_ERROR;
+	int rtn_status = SPI_NAND_FLASH_RTN_NO_ERROR;
 
 	spi_nand_select_die(cntx, (block_index << _SPI_NAND_BLOCK_ROW_ADDRESS_OFFSET));
 
@@ -786,7 +786,7 @@ static int spi_nand_erase_block (const struct flash_cntx *cntx, uint32_t block_i
 	/* 2.6 Check Erase Fail Bit */
 	if( status & _SPI_NAND_VAL_ERASE_FAIL )
 	{
-		_SPI_NAND_PRINTF("spi_nand_erase_block : erase block fail, block = 0x%x, status = 0x%x\n", block_index, status);
+		spi_nand_err("erase block fail, block = 0x%x, status = 0x%x\n", block_index, status);
 		rtn_status = SPI_NAND_FLASH_RTN_ERASE_FAIL;
 	}
 
@@ -806,39 +806,40 @@ static int spi_nand_erase_internal(const struct flash_cntx *cntx, uint32_t addr,
 	spi_controller_enable_manual_mode(spi_controller);
 
 	/* 1. Check the address and len must aligned to NAND Flash block size */
-	if(spi_nand_block_aligned_check(cntx, addr, len) == SPI_NAND_FLASH_RTN_NO_ERROR)
+	if(!spi_nand_block_aligned_check(cntx, addr, len) == SPI_NAND_FLASH_RTN_NO_ERROR)
+		return SPI_NAND_FLASH_RTN_ALIGNED_CHECK_FAIL;
+
+	/* 2. Erase block one by one */
+	while( erase_len < len )
 	{
-		/* 2. Erase block one by one */
-		while( erase_len < len )
+		/* 2.1 Caculate Block index */
+		block_index = (addr/(flash_info->erase_size));
+
+		spi_nand_dbg("spi_nand_erase_internal: addr = 0x%x, len = 0x%x, block_idx = 0x%x\n",
+				addr, len, block_index );
+
+		rtn_status = spi_nand_erase_block(cntx, block_index);
+
+		/* 2.6 Check Erase Fail Bit */
+		if(rtn_status != SPI_NAND_FLASH_RTN_NO_ERROR)
 		{
-			/* 2.1 Caculate Block index */
-			block_index = (addr/(flash_info->erase_size));
-
-			_SPI_NAND_DEBUG_PRINTF(SPI_NAND_FLASH_DEBUG_LEVEL_1, "spi_nand_erase_internal: addr = 0x%x, len = 0x%x, block_idx = 0x%x\n", addr, len, block_index );
-
-			rtn_status = spi_nand_erase_block(cntx, block_index);
-
-			/* 2.6 Check Erase Fail Bit */
-			if(rtn_status != SPI_NAND_FLASH_RTN_NO_ERROR)
-			{
-				spi_nand_err("spi_nand_erase_internal : Erase Fail at addr = 0x%x, len = 0x%x, block_idx = 0x%x\n", addr, len, block_index);
-				rtn_status = SPI_NAND_FLASH_RTN_ERASE_FAIL;
-			}
-
-			/* 2.7 Erase next block if needed */
-			addr		+= flash_info->erase_size;
-			erase_len	+= flash_info->erase_size;
-
-			ui_statusbar_erase(erase_len, len);
+			spi_nand_err("Erase Fail at addr = 0x%x, len = 0x%x, block_idx = 0x%x\n",
+					addr, len, block_index);
+			rtn_status = SPI_NAND_FLASH_RTN_ERASE_FAIL;
 		}
-		ui_statusbar_erasedone(erase_len, len);
-	}
-	else
-	{
-		rtn_status = SPI_NAND_FLASH_RTN_ALIGNED_CHECK_FAIL;
-	}
 
-	return 	(rtn_status);
+		/* 2.7 Erase next block if needed */
+		addr		+= flash_info->erase_size;
+		erase_len	+= flash_info->erase_size;
+
+		ui_statusbar_erase(erase_len, len);
+
+		if (should_abort())
+			break;
+	}
+	ui_statusbar_erasedone(erase_len, len);
+
+	return rtn_status;
 }
 
 static int spi_nand_read_page (const struct flash_cntx *cntx, uint32_t page_number,
@@ -1212,58 +1213,43 @@ static void spi_nand_populate(struct spi_nand_priv *priv, const struct spi_nand_
 	priv->ecc_ok = flash->ecc_ok;
 }
 
+static int spi_nand_probe_matchid(const struct spi_nand_priv *flash_info, void *data)
+{
+	struct spi_nand_priv *ptr_rtn_device_t = data;
+
+	spi_nand_dbg("trying to match chip for mfr_id = 0x%x, dev_id = 0x%x\n",
+			flash_info->mfr_id, flash_info->dev_id);
+
+	if (ptr_rtn_device_t->mfr_id == flash_info->mfr_id &&
+			ptr_rtn_device_t->dev_id == flash_info->dev_id) {
+		spi_nand_populate(ptr_rtn_device_t, flash_info);
+		return 1;
+	}
+
+	return 0;
+}
+
 static int spi_nand_probe(const struct spi_controller *spi_controller,
 		struct spi_nand_priv *ptr_rtn_device_t )
 {
-	spi_nand_dbg("probe start \n");
+	spi_nand_dbg("probe start\n");
 
 	/* Protocol for read id */
 	spi_nand_dbg("Trying to get ID\n");
-	spi_nand_protocol_read_id(spi_controller, ptr_rtn_device_t );
-	spi_nand_protocol_read_id(spi_controller, ptr_rtn_device_t );
+	spi_nand_protocol_read_id(spi_controller, ptr_rtn_device_t);
 
-	for (int i = 0; i < array_size(spi_nand_flash_tables); i++)
-	{
-		spi_nand_dbg("spi_nand_probe: table[%d]: mfr_id = 0x%x, dev_id = 0x%x\n",
-				i, spi_nand_flash_tables[i].mfr_id, spi_nand_flash_tables[i].dev_id );
+	if (spi_nand_flash_foreach(spi_nand_probe_matchid, ptr_rtn_device_t))
+		goto found;
 
-		if (ptr_rtn_device_t->mfr_id == spi_nand_flash_tables[i].mfr_id &&
-				ptr_rtn_device_t->dev_id == spi_nand_flash_tables[i].dev_id) {
-			spi_nand_populate(ptr_rtn_device_t, &spi_nand_flash_tables[i]);
-			goto found;
-		}
-	}
-
-	/* Another protocol for read id  (For example, the GigaDevice SPI NADN chip for Type C */
-	spi_nand_protocol_read_id_2(spi_controller, ptr_rtn_device_t );
-
-	for (int i = 0; i < array_size(spi_nand_flash_tables); i++)
-	{
-		spi_nand_dbg("spi_nand_probe: table[%d]: mfr_id = 0x%x, dev_id = 0x%x\n",
-				i, spi_nand_flash_tables[i].mfr_id, spi_nand_flash_tables[i].dev_id );
-
-		if (ptr_rtn_device_t->mfr_id == spi_nand_flash_tables[i].mfr_id &&
-				ptr_rtn_device_t->dev_id == spi_nand_flash_tables[i].dev_id)
-		{
-			spi_nand_populate(ptr_rtn_device_t, &spi_nand_flash_tables[i]);
-			goto found;
-		}
-	}
+	/* Another protocol for read id  (For example, the GigaDevice SPI NAND chip for Type C */
+	spi_nand_protocol_read_id_2(spi_controller, ptr_rtn_device_t);
+	if (spi_nand_flash_foreach(spi_nand_probe_matchid, ptr_rtn_device_t))
+		goto found;
 
 	/* Another protocol for read id  (For example, the Toshiba/KIOXIA SPI NAND chip */
-	spi_nand_protocol_read_id_3( spi_controller, ptr_rtn_device_t );
-
-	for (int i = 0; i < array_size(spi_nand_flash_tables); i++)
-	{
-		spi_nand_dbg("spi_nand_probe: table[%d]: mfr_id = 0x%x, dev_id = 0x%x\n",
-				i, spi_nand_flash_tables[i].mfr_id, spi_nand_flash_tables[i].dev_id );
-
-		if (ptr_rtn_device_t->mfr_id == spi_nand_flash_tables[i].mfr_id &&
-				ptr_rtn_device_t->dev_id == spi_nand_flash_tables[i].dev_id){
-			spi_nand_populate(ptr_rtn_device_t, &spi_nand_flash_tables[i]);
-			goto found;
-		}
-	}
+	spi_nand_protocol_read_id_3( spi_controller, ptr_rtn_device_t);
+	if (spi_nand_flash_foreach(spi_nand_probe_matchid, ptr_rtn_device_t))
+		goto found;
 
 	return -ENODEV;
 
@@ -1482,6 +1468,8 @@ static int spi_nand_identify(const struct flash_cntx *cntx)
 		goto out;
 	}
 
+	ui_print_flash_status(cntx->status);
+
 out:
 	/* Disable OTP access */
 	spi_nand_protocol_get_status_reg_2(spi_controller, &status2);
@@ -1523,6 +1511,30 @@ int spi_nand_init(const struct spi_controller *spi_controller,
 		flashinfo->page_buffer_sz = flashinfo->page_size + flashinfo->oob_size;
 		flashinfo->page_buffer = malloc(flashinfo->page_buffer_sz);
 
+		/* lock map stuff */
+		int blocks = flashinfo->device_size / flashinfo->erase_size;
+		size_t statussz = flex_array_sz(flash->status, regions, flashinfo->device_size / flashinfo->erase_size);
+		flash->status = malloc(statussz);
+		if (!flash->status)
+			return -ENOMEM;
+
+		flash->status->num_regions = blocks;
+		uint8_t status;
+		spi_nand_protocol_get_status_reg_1(spi_controller, &status);
+
+		spi_nand_info("Status reg: 0x%02x\n", status);
+
+		for (int i = 0; i < flash->status->num_regions; i++) {
+			struct flash_region *region = &flash->status->regions[i];
+
+			region->addr_start = flashinfo->erase_size * i;
+			region->addr_end = (region->addr_start + flashinfo->erase_size) - 1;
+			region->lockable = false;
+			region->locked = false;
+			region->want_to_lock = false;
+			region->want_to_unlock = false;
+		}
+
 		return 0;
 	}
 
@@ -1530,10 +1542,4 @@ int spi_nand_init(const struct spi_controller *spi_controller,
 	flash->priv = NULL;
 
 	return -ENODEV;
-}
-
-void spi_nand_flash_foreach(void (*cb)(const struct spi_nand_priv *flash_info))
-{
-	for (int i = 0; i < array_size(spi_nand_flash_tables); i++)
-		cb(&spi_nand_flash_tables[i]);
 }
