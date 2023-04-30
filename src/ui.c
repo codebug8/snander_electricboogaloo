@@ -546,7 +546,7 @@ int ui_printf(int level, const char *tag, const char *fmt, ...)
 {
 	va_list(args);
 
-	printf("%-14s:", tag);
+	printf("%-14s: ", tag);
 	va_start(args, fmt);
 
 	return vprintf(fmt, args);

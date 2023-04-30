@@ -1,3 +1,13 @@
+conf_data = configuration_data()
+conf_data.set('TAG', 'spi_nand')
+conf_data.set('DEBUG_OPT', 'CONFIG_DEBUG_SPI_NAND')
+conf_data.set('PREFIX', 'spi_nand')
+conf_data.set('FUNC', 'ui_printf')
+
+configure_file(input : log_macros_tmpl,
+               output : 'spi_nand_log.h',
+               configuration : conf_data)
+
 src = [
        'main.c',
        'timer.c',

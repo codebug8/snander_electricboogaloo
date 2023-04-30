@@ -13,6 +13,7 @@ add_project_arguments('-D_GNU_SOURCE', language: 'c')
 
 libdgpc_proj = subproject('libdgpc')
 libdpgc_dep = libdgpc_proj.get_variable('libdgpc_dep')
+log_macros_tmpl = libdgpc_proj.get_variable('log_macros_no_var_tmpl')
 
 libusrio_dep = dependency('libusrio', required : false)
 if not libusrio_dep.found()

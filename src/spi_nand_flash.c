@@ -23,15 +23,7 @@
 #include "cmdbuff.h"
 #include "main.h"
 
-#define TAG "spi_nand"
-
-#ifdef CONFIG_DEBUG_SPI_NAND
-#define spi_nand_dbg(fmt, ...) ui_printf(LOGLEVEL_DGB, TAG, fmt, ##__VA_ARGS__)
-#else
-#define spi_nand_dbg(fmt, ...)
-#endif
-#define spi_nand_info(fmt, ...) ui_printf(LOGLEVEL_INFO, TAG, fmt, ##__VA_ARGS__)
-#define spi_nand_err(fmt, ...) ui_printf(LOGLEVEL_ERR, TAG, fmt, ##__VA_ARGS__)
+#include "spi_nand_log.h"
 
 //#define CONFIG_SPI_NAND_TRACE
 
@@ -241,7 +233,8 @@ static int spi_nand_protocol_block_erase(const struct spi_controller *spi_contro
 	spi_controller_write1(spi_controller, _SPI_NAND_OP_BLOCK_ERASE );
 
 	/* Write block number */
-	block_idx = block_idx << _SPI_NAND_BLOCK_ROW_ADDRESS_OFFSET;	/*Row Address format in SPI NAND chip */
+	/*Row Address format in SPI NAND chip */
+	block_idx = block_idx << _SPI_NAND_BLOCK_ROW_ADDRESS_OFFSET;
 
 	spi_nand_dbg("erase : block idx = 0x%x\n", block_idx);
 
@@ -806,17 +799,14 @@ static int spi_nand_erase_internal(const struct flash_cntx *cntx, uint32_t addr,
 	uint32_t block_index = 0;
 	uint32_t erase_len = 0;
 	SPI_NAND_FLASH_RTN_T rtn_status = SPI_NAND_FLASH_RTN_NO_ERROR;
-#if 0
-	print_dot  = 0;
-#endif
 
-	_SPI_NAND_DEBUG_PRINTF(SPI_NAND_FLASH_DEBUG_LEVEL_1, "\nspi_nand_erase_internal (in): addr = 0x%x, len = 0x%x\n", addr, len );
+	spi_nand_dbg("spi_nand_erase_internal (in): addr = 0x%x, len = 0x%x\n", addr, len);
 
 	/* Switch to manual mode*/
 	spi_controller_enable_manual_mode(spi_controller);
 
 	/* 1. Check the address and len must aligned to NAND Flash block size */
-	if( spi_nand_block_aligned_check(cntx, addr, len) == SPI_NAND_FLASH_RTN_NO_ERROR)
+	if(spi_nand_block_aligned_check(cntx, addr, len) == SPI_NAND_FLASH_RTN_NO_ERROR)
 	{
 		/* 2. Erase block one by one */
 		while( erase_len < len )
@@ -831,7 +821,7 @@ static int spi_nand_erase_internal(const struct flash_cntx *cntx, uint32_t addr,
 			/* 2.6 Check Erase Fail Bit */
 			if(rtn_status != SPI_NAND_FLASH_RTN_NO_ERROR)
 			{
-				_SPI_NAND_PRINTF("spi_nand_erase_internal : Erase Fail at addr = 0x%x, len = 0x%x, block_idx = 0x%x\n", addr, len, block_index);
+				spi_nand_err("spi_nand_erase_internal : Erase Fail at addr = 0x%x, len = 0x%x, block_idx = 0x%x\n", addr, len, block_index);
 				rtn_status = SPI_NAND_FLASH_RTN_ERASE_FAIL;
 			}
 
