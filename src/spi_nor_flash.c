@@ -36,34 +36,46 @@
 #define spi_nor_info(fmt, ...) ui_printf(LOGLEVEL_INFO, TAG, fmt, ##__VA_ARGS__)
 #define spi_nor_err(fmt, ...) ui_printf(LOGLEVEL_ERR, TAG, fmt, ##__VA_ARGS__)
 
-static int spi_nor_wait_ready(const struct spi_controller *spi_controller, int sleep_ms);
-static int spi_nor_read_status_reg(const struct spi_controller *spi_controller, u8 *val);
-static int spi_nor_write_status_reg(const struct spi_controller *spi_controller, u8 val);
+static int spi_nor_wait_ready(const struct flash_cntx *cntx, int sleep_ms);
+static int spi_nor_read_status_reg(const struct flash_cntx *cntx, u8 *val);
+static int spi_nor_write_status_reg(const struct flash_cntx *cntx, u8 val);
+
+#define PREAMBLE(_cntx) \
+		const struct spi_controller *spi_controller = cntx->spi_controller; \
+		assert(spi_controller); \
+		void *spi_controller_priv = cntx->spi_controller_priv; \
+		const struct chip_info *spi_chip_info = flash_get_priv(_cntx); \
+		assert(spi_chip_info)
 
 /*
  * Set write enable latch with Write Enable command.
  * Returns negative if error occurred.
  */
-static inline void spi_nor_write_enable(const struct spi_controller *spi_controller)
+static inline void spi_nor_write_enable(const struct flash_cntx *cntx)
 {
-	spi_controller_cs_assert(spi_controller);
-	spi_controller_write1(spi_controller, OPCODE_WREN);
-	spi_controller_cs_release(spi_controller);
+	PREAMBLE(cntx);
+
+	spi_controller_cs_assert(spi_controller, spi_controller_priv);
+	spi_controller_write1(spi_controller, OPCODE_WREN, spi_controller_priv);
+	spi_controller_cs_release(spi_controller, spi_controller_priv);
 }
 
-static inline void spi_nor_write_disable(const struct spi_controller *spi_controller)
+static inline void spi_nor_write_disable(const struct flash_cntx *cntx)
 {
-	spi_controller_cs_assert(spi_controller);
-	spi_controller_write1(spi_controller, OPCODE_WRDI);
-	spi_controller_cs_release(spi_controller);
+	PREAMBLE(cntx);
+
+	spi_controller_cs_assert(spi_controller, spi_controller_priv);
+	spi_controller_write1(spi_controller, OPCODE_WRDI, spi_controller_priv);
+	spi_controller_cs_release(spi_controller, spi_controller_priv);
 }
 
 /*
  * Service routine to read status register until ready, or timeout occurs.
  * Returns non-zero if error.
  */
-static int spi_nor_wait_ready(const struct spi_controller *spi_controller, int sleep_ms)
+static int spi_nor_wait_ready(const struct flash_cntx *cntx, int sleep_ms)
 {
+	PREAMBLE(cntx);
 	int count;
 	int sr = 0;
 
@@ -72,7 +84,7 @@ static int spi_nor_wait_ready(const struct spi_controller *spi_controller, int s
 	 * but potentially three seconds (!) after page erase.
 	 */
 	for (count = 0; count < ((sleep_ms + 1) * 1000); count++) {
-		if ((spi_nor_read_status_reg(spi_controller, (u8 *)&sr)) < 0)
+		if ((spi_nor_read_status_reg(cntx, (u8 *)&sr)) < 0)
 			break;
 		//| SR_WEL
 		else if (!(sr & (SR_WIP | SR_EPE))) {
@@ -91,14 +103,15 @@ static int spi_nor_wait_ready(const struct spi_controller *spi_controller, int s
 /*
  * read status register
  */
-static int snor_read_rg(const struct spi_controller *spi_controller, uint8_t code, uint8_t *val)
+static int snor_read_rg(const struct flash_cntx *cntx, uint8_t code, uint8_t *val)
 {
+	PREAMBLE(cntx);
 	int retval;
 
-	spi_controller_cs_assert(spi_controller);
-	spi_controller_write1(spi_controller, code);
-	retval = spi_controller_read(spi_controller, val, 1, SPI_CONTROLLER_SPEED_SINGLE);
-	spi_controller_cs_release(spi_controller);
+	spi_controller_cs_assert(spi_controller, spi_controller_priv);
+	spi_controller_write1(spi_controller, code, spi_controller_priv);
+	retval = spi_controller_read(spi_controller, val, 1, SPI_CONTROLLER_SPEED_SINGLE, spi_controller_priv);
+	spi_controller_cs_release(spi_controller, spi_controller_priv);
 	if (retval) {
 		printf("%s: ret: %x\n", __func__, retval);
 		return -1;
@@ -110,14 +123,15 @@ static int snor_read_rg(const struct spi_controller *spi_controller, uint8_t cod
 /*
  * write status register
  */
-static int snor_write_rg(const struct spi_controller *spi_controller, uint8_t code, uint8_t val)
+static int snor_write_rg(const struct flash_cntx *cntx, uint8_t code, uint8_t val)
 {
+	PREAMBLE(cntx);
 	int retval;
 
-	spi_controller_cs_assert(spi_controller);
-	spi_controller_write1(spi_controller, code);
-	retval = spi_controller_write(spi_controller, &val, 1, SPI_CONTROLLER_SPEED_SINGLE);
-	spi_controller_cs_release(spi_controller);
+	spi_controller_cs_assert(spi_controller, spi_controller_priv);
+	spi_controller_write1(spi_controller, code, spi_controller_priv);
+	retval = spi_controller_write(spi_controller, &val, 1, SPI_CONTROLLER_SPEED_SINGLE, spi_controller_priv);
+	spi_controller_cs_release(spi_controller, spi_controller_priv);
 	if (retval) {
 		printf("%s: ret: %x\n", __func__, retval);
 		return -1;
@@ -126,12 +140,12 @@ static int snor_write_rg(const struct spi_controller *spi_controller, uint8_t co
 	return 0;
 }
 
-static int snor_4byte_mode(const struct spi_controller *spi_controller, int enable)
+static int snor_4byte_mode(const struct flash_cntx *cntx, int enable)
 {
-	struct chip_info *spi_chip_info = spi_controller->client->priv;
+	PREAMBLE(cntx);
 	int retval;
 
-	if (spi_nor_wait_ready(spi_controller, 1))
+	if (spi_nor_wait_ready(cntx, 1))
 		return -1;
 
 	if (spi_chip_info->id == 0x1) /* Spansion */
@@ -139,8 +153,8 @@ static int snor_4byte_mode(const struct spi_controller *spi_controller, int enab
 		u8 br_cfn;
 		u8 br = enable ? 0x81 : 0;
 
-		snor_write_rg(spi_controller, OPCODE_BRWR, br);
-		snor_read_rg(spi_controller, OPCODE_BRRD, &br_cfn);
+		snor_write_rg(cntx, OPCODE_BRWR, br);
+		snor_read_rg(cntx, OPCODE_BRRD, &br_cfn);
 		if (br_cfn != br) {
 			printf("4B mode switch failed %s, 0x%02x, 0x%02x\n", enable ? "enable" : "disable" , br_cfn, br);
 			return -1;
@@ -148,9 +162,9 @@ static int snor_4byte_mode(const struct spi_controller *spi_controller, int enab
 	} else {
 		u8 code = enable ? 0xb7 : 0xe9; /* B7: enter 4B, E9: exit 4B */
 
-		spi_controller_cs_assert(spi_controller);
-		retval = spi_controller_write1(spi_controller, code);
-		spi_controller_cs_release(spi_controller);
+		spi_controller_cs_assert(spi_controller, spi_controller_priv);
+		retval = spi_controller_write1(spi_controller, code, spi_controller_priv);
+		spi_controller_cs_release(spi_controller, spi_controller_priv);
 		if (retval) {
 			printf("%s: ret: %x\n", __func__, retval);
 			return -1;
@@ -158,8 +172,8 @@ static int snor_4byte_mode(const struct spi_controller *spi_controller, int enab
 		if ((!enable) && (spi_chip_info->id == 0xef)) /* Winbond */
 		{
 			code = 0;
-			spi_nor_write_enable(spi_controller);
-			snor_write_rg(spi_controller, 0xc5, code);
+			spi_nor_write_enable(cntx);
+			snor_write_rg(cntx, 0xc5, code);
 		}
 	}
 	return 0;
@@ -171,73 +185,82 @@ static int snor_4byte_mode(const struct spi_controller *spi_controller, int enab
  *
  * Returns 0 if successful, non-zero otherwise.
  */
-static int snor_erase_sector(const struct spi_controller *spi_controller, unsigned long offset)
+static int snor_erase_sector(const struct flash_cntx *cntx, unsigned long offset)
 {
-	struct chip_info *spi_chip_info = spi_controller->client->priv;
+	PREAMBLE(cntx);
 
 	spi_nor_dbg("%s: offset:%x\n", __func__, offset);
 
 	/* Wait until finished previous write command. */
-	if (spi_nor_wait_ready(spi_controller, 950))
+	if (spi_nor_wait_ready(cntx, 950))
 		return -1;
 
 	/* If we need 4 byte addresses, enable it */
 	if (spi_chip_info->addr4b)
-		snor_4byte_mode(spi_controller, 1);
+		snor_4byte_mode(cntx, 1);
 
 	/* Send write enable, then erase commands. */
-	spi_nor_write_enable(spi_controller);
+	spi_nor_write_enable(cntx);
 
-	spi_controller_cs_assert(spi_controller);
+	spi_controller_cs_assert(spi_controller, spi_controller_priv);
 
-	spi_controller_write1(spi_controller, OPCODE_SE);
+	spi_controller_write1(spi_controller, OPCODE_SE, spi_controller_priv);
 	if (spi_chip_info->addr4b)
-		spi_controller_write1(spi_controller, (offset >> 24) & 0xff);
-	spi_controller_write1(spi_controller, (offset >> 16) & 0xff);
-	spi_controller_write1(spi_controller, (offset >> 8) & 0xff);
-	spi_controller_write1(spi_controller, offset & 0xff);
+		spi_controller_write1(spi_controller, (offset >> 24) & 0xff, spi_controller_priv);
+	spi_controller_write1(spi_controller, (offset >> 16) & 0xff, spi_controller_priv);
+	spi_controller_write1(spi_controller, (offset >> 8) & 0xff, spi_controller_priv);
+	spi_controller_write1(spi_controller, offset & 0xff, spi_controller_priv);
 
-	spi_controller_cs_release(spi_controller);
+	spi_controller_cs_release(spi_controller, spi_controller_priv);
 
-	spi_nor_wait_ready(spi_controller, 950);
+	spi_nor_wait_ready(cntx, 950);
 
 	if (spi_chip_info->addr4b)
-		snor_4byte_mode(spi_controller, 0);
+		snor_4byte_mode(cntx, 0);
 
 	return 0;
 }
 
-static int spi_nor_full_chip_erase(const struct spi_controller *spi_controller)
+static int spi_nor_full_chip_erase(const struct flash_cntx *cntx)
 {
+	PREAMBLE(cntx);
+
 	/* Wait until finished previous write command. */
-	if (spi_nor_wait_ready(spi_controller, 3))
+	if (spi_nor_wait_ready(cntx, 3))
 		return -EBUSY;
 
 	/* Send write enable, then erase commands. */
-	spi_nor_write_enable(spi_controller);
+	spi_nor_write_enable(cntx);
 
-	spi_controller_cs_assert(spi_controller);
-	spi_controller_write1(spi_controller, OPCODE_BE1);
-	spi_controller_cs_release(spi_controller);
+	spi_controller_cs_assert(spi_controller, spi_controller_priv);
+	spi_controller_write1(spi_controller, OPCODE_BE1, spi_controller_priv);
+	spi_controller_cs_release(spi_controller, spi_controller_priv);
 
-	spi_nor_wait_ready(spi_controller, 950);
-	spi_nor_write_disable(spi_controller);
+	spi_nor_wait_ready(cntx, 950);
+	spi_nor_write_disable(cntx);
 
 	return 0;
 }
 
 /* read SPI flash device ID */
-static int spi_nor_read_devid(const struct spi_controller *spi_controller, uint8_t *rxbuf, int len)
+static int spi_nor_read_devid(const struct flash_cntx *cntx, uint8_t *rxbuf, int len)
 {
+	const struct spi_controller *spi_controller = cntx->spi_controller; \
+	void *spi_controller_priv = cntx->spi_controller_priv; \
+	int ret;
+
 	assert(spi_controller);
 
-	spi_controller_cs_assert(spi_controller);
-	spi_controller_write1(spi_controller, OPCODE_RDID);
+	spi_controller_cs_assert(spi_controller, spi_controller_priv);
 
-	int ret = spi_controller_read(spi_controller, rxbuf, len, SPI_CONTROLLER_SPEED_SINGLE);
+	ret = spi_controller_write1(spi_controller, OPCODE_RDID, spi_controller_priv);
+	if (ret)
+		goto out;
 
-	spi_controller_cs_release(spi_controller);
+	ret = spi_controller_read(spi_controller, rxbuf, len, SPI_CONTROLLER_SPEED_SINGLE, spi_controller_priv);
 
+out:
+	spi_controller_cs_release(spi_controller, spi_controller_priv);
 	if (ret)
 		spi_nor_dbg("%s: ret: %x\n", __func__, ret);
 
@@ -245,14 +268,15 @@ static int spi_nor_read_devid(const struct spi_controller *spi_controller, uint8
 }
 
 /* read status register */
-static int spi_nor_read_status_reg(const struct spi_controller *spi_controller, uint8_t *val)
+static int spi_nor_read_status_reg(const struct flash_cntx *cntx, uint8_t *val)
 {
+	PREAMBLE(cntx);
 	int ret = 0;
 
-	spi_controller_cs_assert(spi_controller);
-	spi_controller_write1(spi_controller, OPCODE_RDSR);
-	ret = spi_controller_read(spi_controller, val, 1, SPI_CONTROLLER_SPEED_SINGLE);
-	spi_controller_cs_release(spi_controller);
+	spi_controller_cs_assert(spi_controller, spi_controller_priv);
+	spi_controller_write1(spi_controller, OPCODE_RDSR, spi_controller_priv);
+	ret = spi_controller_read(spi_controller, val, 1, SPI_CONTROLLER_SPEED_SINGLE, spi_controller_priv);
+	spi_controller_cs_release(spi_controller, spi_controller_priv);
 
 	if (ret) {
 		spi_nor_dbg("%s: ret: %x\n", __func__, ret);
@@ -263,19 +287,20 @@ static int spi_nor_read_status_reg(const struct spi_controller *spi_controller, 
 }
 
 /* write status register */
-static int spi_nor_write_status_reg(const struct spi_controller *spi_controller, u8 val)
+static int spi_nor_write_status_reg(const struct flash_cntx *cntx, u8 val)
 {
+	PREAMBLE(cntx);
 	int ret = 0;
 
 	/* Write must be enabled before changing the nv bits in the status register.. */
-	spi_nor_write_enable(spi_controller);
+	spi_nor_write_enable(cntx);
 
-	spi_controller_cs_assert(spi_controller);
-	spi_controller_write1(spi_controller, OPCODE_WRSR);
-	ret = spi_controller_write(spi_controller, &val, 1, SPI_CONTROLLER_SPEED_SINGLE);
-	spi_controller_cs_release(spi_controller);
+	spi_controller_cs_assert(spi_controller, spi_controller_priv);
+	spi_controller_write1(spi_controller, OPCODE_WRSR, spi_controller_priv);
+	ret = spi_controller_write(spi_controller, &val, 1, SPI_CONTROLLER_SPEED_SINGLE, spi_controller_priv);
+	spi_controller_cs_release(spi_controller, spi_controller_priv);
 
-	spi_nor_wait_ready(spi_controller, 1);
+	spi_nor_wait_ready(cntx, 1);
 
 	if (ret) {
 		spi_nor_dbg("%s: ret: %x\n", __func__, ret);
@@ -285,13 +310,17 @@ static int spi_nor_write_status_reg(const struct spi_controller *spi_controller,
 	return 0;
 }
 
-static const struct chip_info *spi_nor_probe(const struct spi_controller *spi_controller)
+static const struct chip_info *spi_nor_probe(const struct flash_cntx *cntx)
 {
 	const struct chip_info *info = NULL, *match = NULL;
 	uint8_t buf[5];
 	uint32_t jedec, jedec_strip, weight;
+	int ret;
 
-	spi_nor_read_devid(spi_controller, buf, 5);
+	ret = spi_nor_read_devid(cntx, buf, 5);
+	if (ret)
+		return err_ptr(ret);
+
 	jedec = (u32)((u32)(buf[1] << 24) | ((u32)buf[2] << 16) | ((u32)buf[3] <<8) | (u32)buf[4]);
 	jedec_strip = jedec & 0xffff0000;
 
@@ -324,8 +353,7 @@ static const struct chip_info *spi_nor_probe(const struct spi_controller *spi_co
 
 static int spi_nor_erase(const struct flash_cntx *cntx, uint32_t offs, uint32_t len)
 {
-	const struct spi_controller *spi_controller = cntx->spi_controller;
-	struct chip_info *spi_chip_info = spi_controller->client->priv;
+	PREAMBLE(cntx);
 	int ret;
 
 	spi_nor_dbg("erase: offs:%x len:%x\n", offs, len);
@@ -338,7 +366,7 @@ static int spi_nor_erase(const struct flash_cntx *cntx, uint32_t offs, uint32_t 
 	if(!offs && len == cntx->org.device_size)
 	{
 		ui_statusbar_fullchiperase();
-		ret = spi_nor_full_chip_erase(spi_controller);
+		ret = spi_nor_full_chip_erase(cntx);
 		goto out;
 	}
 
@@ -346,7 +374,7 @@ static int spi_nor_erase(const struct flash_cntx *cntx, uint32_t offs, uint32_t 
 	for (int i = 0; i < len; i+= spi_chip_info->sector_size) {
 		ui_statusbar_erase(i, len);
 
-		ret = snor_erase_sector(spi_controller, i);
+		ret = snor_erase_sector(cntx, i);
 		if (ret)
 			break;
 
@@ -360,9 +388,9 @@ out:
 	return ret;
 }
 
-static int spi_nor_set_addr(const struct spi_controller *spi_controller, uint32_t addr)
+static int spi_nor_set_addr(const struct flash_cntx *cntx, uint32_t addr)
 {
-	struct chip_info *spi_chip_info = spi_controller->client->priv;
+	PREAMBLE(cntx);
 	CMDBUFF(cmd);
 
 	assert(spi_chip_info);
@@ -373,16 +401,10 @@ static int spi_nor_set_addr(const struct spi_controller *spi_controller, uint32_
 	cmdbuff_push(&cmd, (addr >> 8) & 0xff);
 	cmdbuff_push(&cmd, addr & 0xff);
 
-	spi_controller_write(spi_controller, cmd.buff, cmd.pos, 0);
+	spi_controller_write(spi_controller, cmd.buff, cmd.pos, 0, spi_controller_priv);
 
 	return 0;
 }
-
-#define PREAMBLE(_cntx) \
-		const struct spi_controller *spi_controller = cntx->spi_controller; \
-		assert(spi_controller); \
-		const struct chip_info *spi_chip_info = flash_get_priv(_cntx); \
-		assert(spi_chip_info)
 
 static int spi_nor_for_each_chunk(const struct flash_cntx *cntx,
 		uint8_t *buf, uint32_t start, uint32_t len, uint32_t chunklen,
@@ -404,11 +426,11 @@ static int spi_nor_read_chunk(const struct flash_cntx *cntx, uint8_t *buf,
 {
 	PREAMBLE(cntx);
 
-	spi_controller_cs_assert(spi_controller);
-	spi_controller_write1(spi_controller, OPCODE_READ);
-	spi_nor_set_addr(spi_controller, off);
-	spi_controller_read(spi_controller, buf, len, SPI_CONTROLLER_SPEED_SINGLE);
-	spi_controller_cs_release(spi_controller);
+	spi_controller_cs_assert(spi_controller, spi_controller_priv);
+	spi_controller_write1(spi_controller, OPCODE_READ,  spi_controller_priv);
+	spi_nor_set_addr(cntx, off);
+	spi_controller_read(spi_controller, buf, len, SPI_CONTROLLER_SPEED_SINGLE, spi_controller_priv);
+	spi_controller_cs_release(spi_controller, spi_controller_priv);
 
 	ui_statusbar_read(total, remainder);
 
@@ -429,18 +451,18 @@ static int spi_nor_read(const struct flash_cntx *cntx, uint8_t *buf, uint32_t fr
 
 	timer_start();
 	/* Wait till previous write/erase is done. */
-	if (spi_nor_wait_ready(spi_controller, 1)) {
+	if (spi_nor_wait_ready(cntx, 1)) {
 		/* REVISIT status return?? */
 		return -1;
 	}
 
 	if (spi_chip_info->addr4b)
-		snor_4byte_mode(spi_controller, 1);
+		snor_4byte_mode(cntx, 1);
 
 	spi_nor_for_each_chunk(cntx, buf, from, len, transfer_sz, spi_nor_read_chunk);
 
 	if (spi_chip_info->addr4b)
-		snor_4byte_mode(spi_controller, 0);
+		snor_4byte_mode(cntx, 0);
 
 	ui_statusbar_readdone(len, 0);
 	timer_end();
@@ -455,16 +477,16 @@ static int spi_nor_write_page(const struct flash_cntx *cntx, uint8_t *buf,
 
 	int ret = 0;
 
-	spi_nor_write_enable(spi_controller);
+	spi_nor_write_enable(cntx);
 
-	spi_controller_cs_assert(spi_controller);
-	spi_controller_write1(spi_controller, OPCODE_PP);
-	spi_nor_set_addr(spi_controller, off);
-	ret = spi_controller_write(spi_controller, buf, len, SPI_CONTROLLER_SPEED_SINGLE);
-	spi_controller_cs_release(spi_controller);
+	spi_controller_cs_assert(spi_controller, spi_controller_priv);
+	spi_controller_write1(spi_controller, OPCODE_PP, spi_controller_priv);
+	spi_nor_set_addr(cntx, off);
+	ret = spi_controller_write(spi_controller, buf, len, SPI_CONTROLLER_SPEED_SINGLE, spi_controller_priv);
+	spi_controller_cs_release(spi_controller, spi_controller_priv);
 
 	if (!ret)
-		ret = spi_nor_wait_ready(spi_controller, 1);
+		ret = spi_nor_wait_ready(cntx, 1);
 
 	ui_statusbar_write(total, remainder);
 
@@ -490,20 +512,20 @@ static int spi_nor_write(const struct flash_cntx *cntx, uint8_t *buf, uint32_t t
 	timer_start();
 
 	/* Wait until finished previous write command. */
-	if (spi_nor_wait_ready(spi_controller, 2))
+	if (spi_nor_wait_ready(cntx, 2))
 		return -EBUSY;
 
 	if (spi_chip_info->addr4b)
-		snor_4byte_mode(spi_controller, 1);
+		snor_4byte_mode(cntx, 1);
 
-	spi_nor_wait_ready(spi_controller, 3);
+	spi_nor_wait_ready(cntx, 3);
 
 	spi_nor_for_each_chunk(cntx, buf, to, len, FLASH_PAGESIZE, spi_nor_write_page);
 
 	if (spi_chip_info->addr4b)
-		snor_4byte_mode(spi_controller, 0);
+		snor_4byte_mode(cntx, 0);
 
-	spi_nor_write_disable(spi_controller);
+	spi_nor_write_disable(cntx);
 
 	ui_statusbar_writedone(len, 0);
 	timer_end();
@@ -517,11 +539,11 @@ static int spi_nor_verify_chunk(const struct flash_cntx *cntx, uint8_t *buf,
 	PREAMBLE(cntx);
 	uint8_t chkbuf[4096];
 
-	spi_controller_cs_assert(spi_controller);
-	spi_controller_write1(spi_controller, OPCODE_READ);
-	spi_nor_set_addr(spi_controller, off);
-	spi_controller_read(spi_controller, chkbuf, len, SPI_CONTROLLER_SPEED_SINGLE);
-	spi_controller_cs_release(spi_controller);
+	spi_controller_cs_assert(spi_controller, spi_controller_priv);
+	spi_controller_write1(spi_controller, OPCODE_READ, spi_controller_priv);
+	spi_nor_set_addr(cntx, off);
+	spi_controller_read(spi_controller, chkbuf, len, SPI_CONTROLLER_SPEED_SINGLE, spi_controller_priv);
+	spi_controller_cs_release(spi_controller, spi_controller_priv);
 
 	if(memcmp(buf, chkbuf, len) != 0)
 		spi_nor_err("bad!!\n");
@@ -545,17 +567,17 @@ static int spi_nor_verify(const struct flash_cntx *cntx, const uint8_t *buf, uin
 	assert(len);
 
 	timer_start();
-	if (spi_nor_wait_ready(spi_controller, 1)) {
+	if (spi_nor_wait_ready(cntx, 1)) {
 		return -1;
 	}
 
 	if (spi_chip_info->addr4b)
-		snor_4byte_mode(spi_controller, 1);
+		snor_4byte_mode(cntx, 1);
 
 	spi_nor_for_each_chunk(cntx, buf, off, len, transfer_sz, spi_nor_verify_chunk);
 
 	if (spi_chip_info->addr4b)
-		snor_4byte_mode(spi_controller, 0);
+		snor_4byte_mode(cntx, 0);
 
 	ui_statusbar_verifydone(len, 0);
 	timer_end();
@@ -575,7 +597,8 @@ static int spi_nor_identify(const struct flash_cntx *cntx)
 	return 0;
 }
 
-static int spi_nor_lockunlock(const struct flash_cntx *cntx, uint32_t offset, uint32_t len)
+static int spi_nor_lockunlock(const struct flash_cntx *cntx,
+	uint32_t offset, uint32_t len)
 {
 	PREAMBLE(cntx);
 
@@ -586,11 +609,11 @@ static int spi_nor_lockunlock(const struct flash_cntx *cntx, uint32_t offset, ui
 
 	uint8_t status, new_status;
 
-	spi_nor_read_status_reg(spi_controller, &status);
+	spi_nor_read_status_reg(cntx, &status);
 	spi_chip_info->set_bp_from_status(&status, cntx->status);
-	spi_nor_write_status_reg(spi_controller, status);
+	spi_nor_write_status_reg(cntx, status);
 
-	spi_nor_read_status_reg(spi_controller, &new_status);
+	spi_nor_read_status_reg(cntx, &new_status);
 	spi_nor_info("wanted status 0x%02x, have 0x%02x\n", status, new_status);
 	spi_chip_info->fill_bp_status(new_status, cntx->status);
 
@@ -617,13 +640,11 @@ static const struct flash_ops spi_nor_flash_ops = {
 	.verify = spi_nor_verify,
 };
 
-int spi_nor_init(const struct spi_controller *spi_controller, struct flash_cntx *flash)
+int spi_nor_init(struct flash_cntx *flash)
 {
 	const struct chip_info *spi_chip_info;
 
-	assert(spi_controller);
-
-	spi_chip_info = spi_nor_probe(spi_controller);
+	spi_chip_info = spi_nor_probe(flash);
 
 	if (!spi_chip_info)
 		return -ENODEV;
@@ -652,7 +673,7 @@ int spi_nor_init(const struct spi_controller *spi_controller, struct flash_cntx 
 	if (spi_chip_info->fill_bp_status) {
 		uint8_t status;
 
-		spi_nor_read_status_reg(spi_controller, &status);
+		spi_nor_read_status_reg(flash, &status);
 		spi_chip_info->fill_bp_status(status, flash->status);
 	}
 

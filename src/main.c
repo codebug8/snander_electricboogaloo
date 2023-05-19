@@ -184,6 +184,7 @@ static int do_write(const struct flash_cntx *flash, const struct ui_parsed_cmdli
 static const struct i2c_controller *i2c_controller = NULL;
 #endif
 static const struct spi_controller *spi_controller = NULL;
+static void *spi_controller_priv = NULL;
 
 static void cleanup(void)
 {
@@ -193,7 +194,7 @@ static void cleanup(void)
 #endif
 
 	if (spi_controller)
-		spi_controller_shutdown(spi_controller);
+		spi_controller_shutdown(spi_controller, spi_controller_priv);
 }
 
 bool should_abort(void)
@@ -267,12 +268,12 @@ int main(int argc, char** argv)
 	if (spi_controller == NULL)
 		return -ENODEV;
 
-	if (spi_controller_init(spi_controller, ui_printf, cmdline.connstring) < 0) {
+	if (spi_controller_open(spi_controller, ui_printf, cmdline.connstring, &spi_controller_priv) < 0) {
 		printf("Programmer device not found!\n\n");
 		return -1;
 	}
 
-	ret = spi_flash_init(spi_controller, &flash, &cmdline);
+	ret = spi_flash_init(spi_controller, spi_controller_priv, &flash, &cmdline);
 	if (ret) {
 		printf("Failed to init spi flash: %d\n", ret);
 		return ret;

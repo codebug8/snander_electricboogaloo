@@ -6,7 +6,8 @@ cflags = cc.get_supported_arguments([
                                      '-Wall',
                                      '-Werror=incompatible-pointer-types',
                                      '-Werror=implicit-function-declaration',
-                                     '-Werror=format-security'
+                                     '-Werror=format-security',
+                                     '-Werror=int-conversion',
                                     ])
 add_project_arguments(cflags, language: 'c')
 add_project_arguments('-D_GNU_SOURCE', language: 'c')

@@ -20,7 +20,7 @@ struct flash_region {
 	bool want_to_unlock;
 };
 
-static inline void flash_region_init(struct flash_region *region, uint32_t *addr_start, uint32_t *addr_end)
+static inline void flash_region_init(struct flash_region *region, uint32_t addr_start, uint32_t addr_end)
 {
 	region->addr_start = addr_start;
 	region->addr_end = addr_end;
@@ -73,6 +73,7 @@ struct flash_cntx {
 
 	const struct i2c_controller *i2c_controller;
 	const struct spi_controller *spi_controller;
+	void *spi_controller_priv;
 
 	void *priv;
 };

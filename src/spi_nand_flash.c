@@ -102,13 +102,13 @@ static SPI_NAND_FLASH_RTN_T spi_nand_protocol_reset(const struct spi_controller 
 	SPI_NAND_FLASH_RTN_T rtn_status = SPI_NAND_FLASH_RTN_NO_ERROR;
 
 	/* 1. Chip Select low */
-	spi_controller_cs_assert(spi_controller);
+	spi_controller_cs_assert(spi_controller, spi_controller_priv);
 
 	/* 2. Send FFh opcode (Reset) */
-	spi_controller_write1(spi_controller, _SPI_NAND_OP_RESET);
+	spi_controller_write1(spi_controller, spi_controller_priv, _SPI_NAND_OP_RESET);
 
 	/* 3. Chip Select High */
-	spi_controller_cs_release(spi_controller);
+	spi_controller_cs_release(spi_controller, spi_controller_priv);
 
 	_SPI_NAND_DEBUG_PRINTF(SPI_NAND_FLASH_DEBUG_LEVEL_1, "spi_nand_protocol_reset\n");
 
@@ -116,12 +116,13 @@ static SPI_NAND_FLASH_RTN_T spi_nand_protocol_reset(const struct spi_controller 
 }
 #endif
 
-static int spi_nand_protocol_set_feature(const struct spi_controller *spi_controller, uint8_t addr, uint8_t data)
+static int spi_nand_protocol_set_feature(const struct spi_controller *spi_controller,
+	void *spi_controller_priv, uint8_t addr, uint8_t data)
 {
 	CMDBUFF(cmd);
 
 	/* Chip Select low */
-	spi_controller_cs_assert(spi_controller);
+	spi_controller_cs_assert(spi_controller, spi_controller_priv);
 
 	/* Send 0Fh opcode (Set Feature) */
 	cmdbuff_push(&cmd, _SPI_NAND_OP_SET_FEATURE);
@@ -132,22 +133,23 @@ static int spi_nand_protocol_set_feature(const struct spi_controller *spi_contro
 	/* Write new setting */
 	cmdbuff_push(&cmd, data);
 
-	spi_controller_write(spi_controller, cmd.buff, cmd.pos, SPI_CONTROLLER_SPEED_SINGLE);
+	spi_controller_write(spi_controller, cmd.buff, cmd.pos, SPI_CONTROLLER_SPEED_SINGLE, spi_controller_priv);
 
 	/* Chip Select High */
-	spi_controller_cs_release(spi_controller);
+	spi_controller_cs_release(spi_controller, spi_controller_priv);
 
 	spi_nand_dbg("set_feature %x: val = 0x%x\n", addr, data);
 
 	return 0;
 }
 
-static int spi_nand_protocol_get_feature(const struct spi_controller *spi_controller, uint8_t addr, uint8_t *ptr_rtn_data)
+static int spi_nand_protocol_get_feature(const struct spi_controller *spi_controller,
+	void *spi_controller_priv, uint8_t addr, uint8_t *ptr_rtn_data)
 {
 	CMDBUFF(cmd);
 
 	/* 1. Chip Select low */
-	spi_controller_cs_assert(spi_controller);
+	spi_controller_cs_assert(spi_controller, spi_controller_priv);
 
 	/* 2. Send 0Fh opcode (Get Feature) */
 	cmdbuff_push(&cmd, _SPI_NAND_OP_GET_FEATURE);
@@ -155,13 +157,15 @@ static int spi_nand_protocol_get_feature(const struct spi_controller *spi_contro
 	/* 3. Offset addr */
 	cmdbuff_push(&cmd, addr);
 
-	spi_controller_write(spi_controller, cmd.buff, cmd.pos, SPI_CONTROLLER_SPEED_SINGLE);
+	spi_controller_write(spi_controller,cmd.buff, cmd.pos, SPI_CONTROLLER_SPEED_SINGLE,
+			spi_controller_priv);
 
 	/* 4. Read 1 byte data */
-	spi_controller_read(spi_controller, ptr_rtn_data, _SPI_NAND_LEN_ONE_BYTE, SPI_CONTROLLER_SPEED_SINGLE);
+	spi_controller_read(spi_controller,ptr_rtn_data, _SPI_NAND_LEN_ONE_BYTE, SPI_CONTROLLER_SPEED_SINGLE,
+			 spi_controller_priv);
 
 	/* 5. Chip Select High */
-	spi_controller_cs_release(spi_controller);
+	spi_controller_cs_release(spi_controller, spi_controller_priv);
 
 	spi_nand_dbg("get_feature %x: val = 0x%x\n", addr, *ptr_rtn_data);
 
@@ -169,99 +173,109 @@ static int spi_nand_protocol_get_feature(const struct spi_controller *spi_contro
 }
 
 static inline int spi_nand_protocol_set_status_reg_1(const struct spi_controller *spi_controller,
-		uint8_t protection)
+		void *spi_controller_priv, uint8_t protection)
 {
 	/* Offset addr of protection (0xA0) */
-	return spi_nand_protocol_set_feature(spi_controller, _SPI_NAND_ADDR_PROTECTION, protection);
+	return spi_nand_protocol_set_feature(spi_controller, spi_controller_priv,
+		_SPI_NAND_ADDR_PROTECTION, protection);
 }
 
 static inline int spi_nand_protocol_get_status_reg_1(const struct spi_controller *spi_controller,
-		uint8_t *ptr_rtn_protection )
+		void *spi_controller_priv, uint8_t *ptr_rtn_protection )
 {
 	/* Offset addr of protection (0xA0) */
-	return spi_nand_protocol_get_feature(spi_controller, _SPI_NAND_ADDR_PROTECTION, ptr_rtn_protection);
+	return spi_nand_protocol_get_feature(spi_controller, spi_controller_priv,
+		_SPI_NAND_ADDR_PROTECTION, ptr_rtn_protection);
 }
 
 static inline int spi_nand_protocol_set_status_reg_2(const struct spi_controller *spi_controller,
-		uint8_t feature)
+		void *spi_controller_priv, uint8_t feature)
 {
 	/* Offset addr of feature (0xB0) */
-	return spi_nand_protocol_set_feature(spi_controller,_SPI_NAND_ADDR_FEATURE, feature);
+	return spi_nand_protocol_set_feature(spi_controller, spi_controller_priv,
+		_SPI_NAND_ADDR_FEATURE, feature);
 }
 
 static inline int spi_nand_protocol_get_status_reg_2(const struct spi_controller *spi_controller,
-		uint8_t *value)
+		void *spi_controller_priv, uint8_t *value)
 {
 	/* Offset addr of protection (0xB0) */
-	return spi_nand_protocol_get_feature(spi_controller, _SPI_NAND_ADDR_FEATURE, value);
+	return spi_nand_protocol_get_feature(spi_controller, spi_controller_priv,
+		_SPI_NAND_ADDR_FEATURE, value);
 }
 
 static inline int spi_nand_protocol_get_status_reg_3(const struct spi_controller *spi_controller,
-		uint8_t *ptr_rtn_status)
+		void *spi_controller_priv, uint8_t *ptr_rtn_status)
 {
 	/* Offset addr of status (0xC0) */
-	return spi_nand_protocol_get_feature(spi_controller, _SPI_NAND_ADDR_STATUS, ptr_rtn_status);
+	return spi_nand_protocol_get_feature(spi_controller, spi_controller_priv,
+		_SPI_NAND_ADDR_STATUS, ptr_rtn_status);
 }
 
 static inline int spi_nand_protocol_set_status_reg_4(const struct spi_controller *spi_controller,
-		uint8_t feature)
+		void *spi_controller_priv, uint8_t feature)
 {
 	/* Offset addr of feature 4 (0xD0) */
-	return spi_nand_protocol_set_feature(spi_controller,_SPI_NAND_ADDR_FEATURE_4, feature);
+	return spi_nand_protocol_set_feature(spi_controller, spi_controller_priv,
+		_SPI_NAND_ADDR_FEATURE_4, feature);
 }
 
 static inline int spi_nand_protocol_get_status_reg_4(const struct spi_controller *spi_controller,
-		uint8_t *ptr_rtn_status)
+		void *spi_controller_priv, uint8_t *ptr_rtn_status)
 {
 	/* Offset addr of feature 4 (0xD0) */
-	return spi_nand_protocol_get_feature(spi_controller, _SPI_NAND_ADDR_FEATURE_4, ptr_rtn_status);
+	return spi_nand_protocol_get_feature(spi_controller, spi_controller_priv,
+		_SPI_NAND_ADDR_FEATURE_4, ptr_rtn_status);
 }
 
 static inline int spi_nand_protocol_get_status_reg_5(const struct spi_controller *spi_controller,
-		uint8_t *ptr_rtn_status)
+		void *spi_controller_priv, uint8_t *ptr_rtn_status)
 {
 	/* Offset addr of status 5 (0xE0)) */
-	return spi_nand_protocol_get_feature(spi_controller, _SPI_NAND_ADDR_STATUS_5, ptr_rtn_status);
+	return spi_nand_protocol_get_feature(spi_controller, spi_controller_priv,
+		_SPI_NAND_ADDR_STATUS_5, ptr_rtn_status);
 }
 
-static int spi_nand_protocol_write_enable(const struct spi_controller *spi_controller)
+static int spi_nand_protocol_write_enable(const struct spi_controller *spi_controller,
+		void *spi_controller_priv)
 {
 	spi_nand_trace("enabling write\n");
 
 	/* Chip Select Low */
-	spi_controller_cs_assert(spi_controller);
+	spi_controller_cs_assert(spi_controller, spi_controller_priv);
 
 	/* Write op_cmd 0x06 (Write Enable (WREN)*/
-	spi_controller_write1(spi_controller, _SPI_NAND_OP_WRITE_ENABLE);
+	spi_controller_write1(spi_controller, _SPI_NAND_OP_WRITE_ENABLE, spi_controller_priv);
 
 	/* Chip Select High */
-	spi_controller_cs_release(spi_controller);
+	spi_controller_cs_release(spi_controller, spi_controller_priv);
 
 	return 0;
 }
 
-static int spi_nand_protocol_write_disable(const struct spi_controller *spi_controller)
+static int spi_nand_protocol_write_disable(const struct spi_controller *spi_controller, void *spi_controller_priv)
 {
 	/* Chip Select Low */
-	spi_controller_cs_assert(spi_controller);
+	spi_controller_cs_assert(spi_controller, spi_controller_priv);
 
 	/* Write op_cmd 0x04 (Write Disable (WRDI)*/
-	spi_controller_write1(spi_controller, _SPI_NAND_OP_WRITE_DISABLE);
+	spi_controller_write1(spi_controller, _SPI_NAND_OP_WRITE_DISABLE, spi_controller_priv);
 
 	/* Chip Select High */
-	spi_controller_cs_release(spi_controller);
+	spi_controller_cs_release(spi_controller, spi_controller_priv);
 
 	return 0;
 }
 
 static int spi_nand_protocol_block_erase(const struct spi_controller *spi_controller,
+		void *spi_controller_priv,
 		uint32_t block_idx )
 {
 	/* Chip Select Low */
-	spi_controller_cs_assert(spi_controller);
+	spi_controller_cs_assert(spi_controller, spi_controller_priv);
 
 	/* Write op_cmd 0xD8 (Block Erase) */
-	spi_controller_write1(spi_controller, _SPI_NAND_OP_BLOCK_ERASE );
+	spi_controller_write1(spi_controller, _SPI_NAND_OP_BLOCK_ERASE, spi_controller_priv);
 
 	/* Write block number */
 	/*Row Address format in SPI NAND chip */
@@ -270,66 +284,75 @@ static int spi_nand_protocol_block_erase(const struct spi_controller *spi_contro
 	spi_nand_dbg("erase : block idx = 0x%x\n", block_idx);
 
 	/* dummy byte */
-	spi_controller_write1(spi_controller, (block_idx >> 16) & 0xff );
-	spi_controller_write1(spi_controller, (block_idx >> 8)  & 0xff );
-	spi_controller_write1(spi_controller, block_idx & 0xff );
+	spi_controller_write1(spi_controller, (block_idx >> 16) & 0xff, spi_controller_priv);
+	spi_controller_write1(spi_controller, (block_idx >> 8)  & 0xff, spi_controller_priv);
+	spi_controller_write1(spi_controller, block_idx & 0xff, spi_controller_priv);
 
 	/* Chip Select High */
-	spi_controller_cs_release(spi_controller);
+	spi_controller_cs_release(spi_controller, spi_controller_priv);
 
 	return 0;
 }
 
-static SPI_NAND_FLASH_RTN_T spi_nand_protocol_read_id (const struct spi_controller *spi_controller,
-		struct spi_nand_priv *ptr_rtn_flash_id )
+static int spi_nand_protocol_read_id (const struct spi_controller *spi_controller,
+		void *spi_controller_priv, struct spi_nand_priv *priv)
 {
 	SPI_NAND_FLASH_RTN_T rtn_status = SPI_NAND_FLASH_RTN_NO_ERROR;
+	int ret;
 
 	/* 1. Chip Select Low */
-	spi_controller_cs_assert(spi_controller);
+	spi_controller_cs_assert(spi_controller, spi_controller_priv);
 
 	/* 2. Write op_cmd 0x9F (Read ID) */
-	spi_controller_write1(spi_controller, _SPI_NAND_OP_READ_ID );
+	ret = spi_controller_write1(spi_controller, _SPI_NAND_OP_READ_ID, spi_controller_priv);
+	if (ret)
+		goto out;
 
 	/* 3. Write Address Byte (0x00) */
-	spi_controller_write1(spi_controller, _SPI_NAND_ADDR_MANUFACTURE_ID );
+	ret = spi_controller_write1(spi_controller, _SPI_NAND_ADDR_MANUFACTURE_ID, spi_controller_priv);
+	if (ret)
+		goto out;
 
 	/* 4. Read data (Manufacture ID and Device ID) */
 	uint8_t tmp[2];
-	spi_controller_read(spi_controller, tmp, 2, SPI_CONTROLLER_SPEED_SINGLE);
+	ret = spi_controller_read(spi_controller, tmp, 2, SPI_CONTROLLER_SPEED_SINGLE, spi_controller_priv);
+	if (ret)
+		goto out;
 
-	ptr_rtn_flash_id->mfr_id = tmp[0];
-	ptr_rtn_flash_id->dev_id = tmp[1];
-
-	/* 5. Chip Select High */
-	spi_controller_cs_release(spi_controller);
+	priv->mfr_id = tmp[0];
+	priv->dev_id = tmp[1];
 
 	_SPI_NAND_DEBUG_PRINTF(SPI_NAND_FLASH_DEBUG_LEVEL_1, "spi_nand_protocol_read_id : mfr_id = 0x%x, dev_id = 0x%x\n",
-		ptr_rtn_flash_id->mfr_id, ptr_rtn_flash_id->dev_id);
+		priv->mfr_id, priv->dev_id);
 
-	return (rtn_status);
+out:
+	/* 5. Chip Select High */
+	spi_controller_cs_release(spi_controller, spi_controller_priv);
+
+	return ret;
 }
 
 static SPI_NAND_FLASH_RTN_T spi_nand_protocol_read_id_2 (const struct spi_controller *spi_controller,
+		void *spi_controller_priv,
 		struct spi_nand_priv *ptr_rtn_flash_id )
 {
 	SPI_NAND_FLASH_RTN_T rtn_status = SPI_NAND_FLASH_RTN_NO_ERROR;
 
 	/* 1. Chip Select Low */
-	spi_controller_cs_assert(spi_controller);
+	spi_controller_cs_assert(spi_controller, spi_controller_priv);
 
 	/* 2. Write op_cmd 0x9F (Read ID) */
-	spi_controller_write1(spi_controller, _SPI_NAND_OP_READ_ID);
+	spi_controller_write1(spi_controller, _SPI_NAND_OP_READ_ID, spi_controller_priv);
 
 	/* 3. Read data (Manufacture ID and Device ID) */
 	uint8_t tmp[2];
-	spi_controller_read(spi_controller, tmp, 2, SPI_CONTROLLER_SPEED_SINGLE);
+	spi_controller_read(spi_controller, tmp, 2, SPI_CONTROLLER_SPEED_SINGLE, spi_controller_priv);
 
 	ptr_rtn_flash_id->mfr_id = tmp[0];
 	ptr_rtn_flash_id->dev_id = tmp[1];
 
 	/* 4. Chip Select High */
-	spi_controller_cs_release(spi_controller);
+	spi_controller_cs_release(spi_controller, spi_controller_priv);
 
 	_SPI_NAND_DEBUG_PRINTF(SPI_NAND_FLASH_DEBUG_LEVEL_1, "spi_nand_protocol_read_id_2 : mfr_id = 0x%x, dev_id = 0x%x\n",
 		ptr_rtn_flash_id->mfr_id, ptr_rtn_flash_id->dev_id);
@@ -338,24 +361,28 @@ static SPI_NAND_FLASH_RTN_T spi_nand_protocol_read_id_2 (const struct spi_contro
 }
 
 static SPI_NAND_FLASH_RTN_T spi_nand_protocol_read_id_3 (const struct spi_controller *spi_controller,
+		void *spi_controller_priv,
 		struct spi_nand_priv *ptr_rtn_flash_id )
 {
 	SPI_NAND_FLASH_RTN_T rtn_status = SPI_NAND_FLASH_RTN_NO_ERROR;
 	uint8_t dummy = 0;
 
 	/* 1. Chip Select Low */
-	spi_controller_cs_assert(spi_controller);
+	spi_controller_cs_assert(spi_controller, spi_controller_priv);
 
 	/* 2. Write op_cmd 0x9F (Read ID) */
-	spi_controller_write1(spi_controller, _SPI_NAND_OP_READ_ID);
+	spi_controller_write1(spi_controller, _SPI_NAND_OP_READ_ID, spi_controller_priv);
 
 	/* 3. Read data (Manufacture ID and Device ID) */
-	spi_controller_read(spi_controller, &dummy, _SPI_NAND_LEN_ONE_BYTE, SPI_CONTROLLER_SPEED_SINGLE);
-	spi_controller_read(spi_controller, &(ptr_rtn_flash_id->mfr_id), _SPI_NAND_LEN_ONE_BYTE, SPI_CONTROLLER_SPEED_SINGLE);
-	spi_controller_read(spi_controller, &(ptr_rtn_flash_id->dev_id), _SPI_NAND_LEN_ONE_BYTE, SPI_CONTROLLER_SPEED_SINGLE);
+	spi_controller_read(spi_controller, &dummy, 1,
+			SPI_CONTROLLER_SPEED_SINGLE, spi_controller_priv);
+	spi_controller_read(spi_controller, &(ptr_rtn_flash_id->mfr_id), 1,
+			SPI_CONTROLLER_SPEED_SINGLE, spi_controller_priv);
+	spi_controller_read(spi_controller, &(ptr_rtn_flash_id->dev_id), 1,
+			SPI_CONTROLLER_SPEED_SINGLE, spi_controller_priv);
 
 	/* 4. Chip Select High */
-	spi_controller_cs_release(spi_controller);
+	spi_controller_cs_release(spi_controller, spi_controller_priv);
 
 	_SPI_NAND_DEBUG_PRINTF(SPI_NAND_FLASH_DEBUG_LEVEL_1, "spi_nand_protocol_read_id_3 : dummy = 0x%x, mfr_id = 0x%x, dev_id = 0x%x\n", dummy, ptr_rtn_flash_id->mfr_id, ptr_rtn_flash_id->dev_id);
 
@@ -364,10 +391,12 @@ static SPI_NAND_FLASH_RTN_T spi_nand_protocol_read_id_3 (const struct spi_contro
 
 #define PREAMBLE(_cntx) \
 	const struct spi_controller *spi_controller __attribute__ ((unused)); \
+	void *spi_controller_priv __attribute__ ((unused)); \
 	const struct spi_nand_priv *spi_nand_priv __attribute__ ((unused)); \
 	assert(_cntx);\
 	spi_controller = _cntx->spi_controller;\
 	assert(spi_controller);\
+	spi_controller_priv = _cntx->spi_controller_priv;\
 	spi_nand_priv = flash_get_priv(_cntx);\
 	assert(spi_nand_priv)
 
@@ -377,7 +406,7 @@ static int spi_nand_protocol_page_read (const struct flash_cntx *cntx, uint32_t 
 	CMDBUFF(cmd);
 
 	/* Chip Select low */
-	spi_controller_cs_assert(spi_controller);
+	spi_controller_cs_assert(spi_controller, spi_controller_priv);
 
 	/* Send 13h opcode */
 	cmdbuff_push(&cmd, _SPI_NAND_OP_PAGE_READ);
@@ -386,10 +415,10 @@ static int spi_nand_protocol_page_read (const struct flash_cntx *cntx, uint32_t 
 	cmdbuff_push(&cmd, (page_number >> 16) & 0xff);
 	cmdbuff_push(&cmd, (page_number >> 8) & 0xff);
 	cmdbuff_push(&cmd, page_number & 0xff);
-	spi_controller_write(spi_controller, cmd.buff, cmd.pos, SPI_CONTROLLER_SPEED_SINGLE);
+	spi_controller_write(spi_controller, cmd.buff, cmd.pos, SPI_CONTROLLER_SPEED_SINGLE, spi_controller_priv);
 
 	/* Chip Select High */
-	spi_controller_cs_release(spi_controller);
+	spi_controller_cs_release(spi_controller, spi_controller_priv);
 
 	spi_nand_dbg("loaded page 0x%x into cache\n", page_number);
 
@@ -409,7 +438,7 @@ static int _spi_nand_protocol_read_from_cache(const struct flash_cntx *flash,
 	spi_nand_dbg("addr = 0x%08x, len = 0x%08x\n", data_offset, len);
 
 	/* 1. Chip Select low */
-	spi_controller_cs_assert(spi_controller);
+	spi_controller_cs_assert(spi_controller, spi_controller_priv);
 #if 0
 	/* 2. Send opcode */
 	switch (read_mode)
@@ -462,21 +491,25 @@ static int _spi_nand_protocol_read_from_cache(const struct flash_cntx *flash,
 			  (read_mode == SPI_NAND_FLASH_READ_SPEED_MODE_QUAD)))
 		cmdbuff_push(&cmd, 0xff);
 
-	spi_controller_write(spi_controller, cmd.buff, cmd.pos, SPI_CONTROLLER_SPEED_SINGLE);
+	spi_controller_write(spi_controller, cmd.buff, cmd.pos, SPI_CONTROLLER_SPEED_SINGLE,
+			spi_controller_priv);
 
 	/* 4. Read n byte (len) data */
 	switch (read_mode)
 	{
 		case SPI_NAND_FLASH_READ_SPEED_MODE_SINGLE:
-			spi_controller_read(spi_controller, buf, len, SPI_CONTROLLER_SPEED_SINGLE);
+			spi_controller_read(spi_controller, buf, len, SPI_CONTROLLER_SPEED_SINGLE,
+					spi_controller_priv);
 			break;
 
 		case SPI_NAND_FLASH_READ_SPEED_MODE_DUAL:
-			spi_controller_read(spi_controller, buf, len, SPI_CONTROLLER_SPEED_DUAL);
+			spi_controller_read(spi_controller, buf, len, SPI_CONTROLLER_SPEED_DUAL,
+					spi_controller_priv);
 			break;
 
 		case SPI_NAND_FLASH_READ_SPEED_MODE_QUAD:
-			spi_controller_read(spi_controller, buf, len, SPI_CONTROLLER_SPEED_QUAD);
+			spi_controller_read(spi_controller, buf, len, SPI_CONTROLLER_SPEED_QUAD,
+					spi_controller_priv);
 			break;
 
 		default:
@@ -484,7 +517,7 @@ static int _spi_nand_protocol_read_from_cache(const struct flash_cntx *flash,
 	}
 
 	/* 5. Chip Select High */
-	spi_controller_cs_release(spi_controller);
+	spi_controller_cs_release(spi_controller, spi_controller_priv);
 
 	spi_nand_dbg("read from cache : data_offset = 0x%x, buf = 0x%x\n", data_offset, buf);
 
@@ -542,19 +575,19 @@ static int _spi_nand_protocol_program_load (const struct flash_cntx *cntx,
 
 senddata:
 	/* 1. Chip Select low */
-	spi_controller_cs_assert(spi_controller);
+	spi_controller_cs_assert(spi_controller, spi_controller_priv);
 #if 0
 	/* 2. Send opcode */
 	switch (write_mode)
 	{
 		/* 02h */
 		case SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE:
-			spi_controller_write1(spi_controller, _SPI_NAND_OP_PROGRAM_LOAD_SINGLE );
+			spi_controller_write1(spi_controller, _SPI_NAND_OP_PROGRAM_LOAD_SINGLE, spi_controller_priv);
 			break;
 
 		/* 32h */
 		case SPI_NAND_FLASH_WRITE_SPEED_MODE_QUAD:
-			spi_controller_write1(spi_controller, _SPI_NAND_OP_PROGRAM_LOAD_QUAD );
+			spi_controller_write1(spi_controller, _SPI_NAND_OP_PROGRAM_LOAD_QUAD, spi_controller_priv);
 			break;
 
 		default:
@@ -569,9 +602,9 @@ senddata:
 	 * loaded data.
 	 */
 	if(continuation)
-		spi_controller_write1(spi_controller, _SPI_NAND_OP_PROGRAM_LOAD_RAMDOM_SINGLE);
+		spi_controller_write1(spi_controller, _SPI_NAND_OP_PROGRAM_LOAD_RAMDOM_SINGLE, spi_controller_priv);
 	else
-		spi_controller_write1(spi_controller, _SPI_NAND_OP_PROGRAM_LOAD_SINGLE );
+		spi_controller_write1(spi_controller, _SPI_NAND_OP_PROGRAM_LOAD_SINGLE, spi_controller_priv);
 
 #endif
 	/* 3. Send address offset */
@@ -579,33 +612,33 @@ senddata:
 	{
 		if( _plane_select_bit == 0)
 		{
-			spi_controller_write1(spi_controller, ((addr >> 8 ) & (0xef)) );
+			spi_controller_write1(spi_controller, ((addr >> 8 ) & (0xef)), spi_controller_priv);
 		}
 		if( _plane_select_bit == 1)
 		{
-			spi_controller_write1(spi_controller, ((addr >> 8 ) | (0x10)) );
+			spi_controller_write1(spi_controller, ((addr >> 8 ) | (0x10)), spi_controller_priv);
 		}
 	}
 	else
-		spi_controller_write1(spi_controller, (addr >> 8) & 0xff);
+		spi_controller_write1(spi_controller, (addr >> 8) & 0xff, spi_controller_priv);
 
-	spi_controller_write1(spi_controller, addr & 0xff);
+	spi_controller_write1(spi_controller, addr & 0xff, spi_controller_priv);
 
 	/* 4. Send data */
 	switch (write_mode)
 	{
 		case SPI_NAND_FLASH_WRITE_SPEED_MODE_SINGLE:
-			spi_controller_write(spi_controller, ptr_data, len, SPI_CONTROLLER_SPEED_SINGLE);
+			spi_controller_write(spi_controller, ptr_data, len, SPI_CONTROLLER_SPEED_SINGLE, spi_controller_priv);
 			break;
 		case SPI_NAND_FLASH_WRITE_SPEED_MODE_QUAD:
-			spi_controller_write(spi_controller, ptr_data, len, SPI_CONTROLLER_SPEED_QUAD);
+			spi_controller_write(spi_controller, ptr_data, len, SPI_CONTROLLER_SPEED_QUAD, spi_controller_priv);
 			break;
 		default:
 			break;
 	}
-	
+
 	/* 5. Chip Select High */
-	spi_controller_cs_release(spi_controller);
+	spi_controller_cs_release(spi_controller, spi_controller_priv);
 
 	return (rtn_status);
 }
@@ -628,45 +661,46 @@ static int spi_nand_protocol_program_load(const struct flash_cntx *cntx,
 }
 
 static SPI_NAND_FLASH_RTN_T spi_nand_protocol_program_execute (const struct spi_controller *spi_controller,
-		uint32_t addr )
+		void *spi_controller_priv,
+		uint32_t addr)
 {
 	SPI_NAND_FLASH_RTN_T rtn_status = SPI_NAND_FLASH_RTN_NO_ERROR;
 
 	spi_nand_info("addr = 0x%08x\n", addr);
 
 	/* 1. Chip Select low */
-	spi_controller_cs_assert(spi_controller);
+	spi_controller_cs_assert(spi_controller, spi_controller_priv);
 
 	/* 2. Send 10h opcode */
-	spi_controller_write1(spi_controller, _SPI_NAND_OP_PROGRAM_EXECUTE );
+	spi_controller_write1(spi_controller, _SPI_NAND_OP_PROGRAM_EXECUTE, spi_controller_priv);
 
 	/* 3. Send address offset */
-	spi_controller_write1(spi_controller, ((addr >> 16  ) & 0xff) );
-	spi_controller_write1(spi_controller, ((addr >> 8   ) & 0xff) );
-	spi_controller_write1(spi_controller, ((addr)         & 0xff) );
+	spi_controller_write1(spi_controller, ((addr >> 16  ) & 0xff), spi_controller_priv);
+	spi_controller_write1(spi_controller, ((addr >> 8   ) & 0xff),  spi_controller_priv );
+	spi_controller_write1(spi_controller, ((addr) & 0xff), spi_controller_priv);
 
 	/* 4. Chip Select High */
-	spi_controller_cs_release(spi_controller);
+	spi_controller_cs_release(spi_controller, spi_controller_priv);
 
 	return (rtn_status);
 }
 
 static SPI_NAND_FLASH_RTN_T spi_nand_protocol_die_select_1(const struct spi_controller *spi_controller,
-		uint8_t die_id)
+		void *spi_controller_priv, uint8_t die_id)
 {
 	SPI_NAND_FLASH_RTN_T rtn_status = SPI_NAND_FLASH_RTN_NO_ERROR;
 
 	/* 1. Chip Select low */
-	spi_controller_cs_assert(spi_controller);
+	spi_controller_cs_assert(spi_controller, spi_controller_priv);
 
 	/* 2. Send C2h opcode (Die Select) */
-	spi_controller_write1(spi_controller, _SPI_NAND_OP_DIE_SELECT );
+	spi_controller_write1(spi_controller,_SPI_NAND_OP_DIE_SELECT, spi_controller_priv);
 
 	/* 3. Send Die ID */
-	spi_controller_write1(spi_controller, die_id );
+	spi_controller_write1(spi_controller, die_id, spi_controller_priv);
 
 	/* 5. Chip Select High */
-	spi_controller_cs_release(spi_controller);
+	spi_controller_cs_release(spi_controller, spi_controller_priv);
 
 	_SPI_NAND_DEBUG_PRINTF(SPI_NAND_FLASH_DEBUG_LEVEL_1, "spi_nand_protocol_die_select_1\n");
 
@@ -674,12 +708,12 @@ static SPI_NAND_FLASH_RTN_T spi_nand_protocol_die_select_1(const struct spi_cont
 }
 
 static SPI_NAND_FLASH_RTN_T spi_nand_protocol_die_select_2(const struct spi_controller *spi_controller,
-		uint8_t die_id)
+		void *spi_controller_priv, uint8_t die_id)
 {
 	SPI_NAND_FLASH_RTN_T rtn_status = SPI_NAND_FLASH_RTN_NO_ERROR;
 	uint8_t feature;
 
-	rtn_status = spi_nand_protocol_get_status_reg_4(spi_controller, &feature);
+	rtn_status = spi_nand_protocol_get_status_reg_4(spi_controller, spi_controller_priv, &feature);
 	if(rtn_status != SPI_NAND_FLASH_RTN_NO_ERROR) {
 		_SPI_NAND_PRINTF("spi_nand_protocol_die_select_2 get die select fail.\n");
 		return (rtn_status);
@@ -690,7 +724,7 @@ static SPI_NAND_FLASH_RTN_T spi_nand_protocol_die_select_2(const struct spi_cont
 	} else {
 		feature |= 0x40;
 	}
-	rtn_status = spi_nand_protocol_set_status_reg_4(spi_controller, feature);
+	rtn_status = spi_nand_protocol_set_status_reg_4(spi_controller, spi_controller_priv, feature);
 
 	_SPI_NAND_DEBUG_PRINTF(SPI_NAND_FLASH_DEBUG_LEVEL_1, "spi_nand_protocol_die_select_2\n");
 
@@ -710,7 +744,7 @@ static void spi_nand_select_die (const struct flash_cntx *cntx,
 		if (_die_id != die_id)
 		{
 			_die_id = die_id;
-			spi_nand_protocol_die_select_1(spi_controller, die_id);
+			spi_nand_protocol_die_select_1(spi_controller, spi_controller_priv, die_id);
 
 			_SPI_NAND_DEBUG_PRINTF(SPI_NAND_FLASH_DEBUG_LEVEL_2, "spi_nand_protocol_die_select_1: die_id=0x%x\n", die_id);
 		}
@@ -721,7 +755,7 @@ static void spi_nand_select_die (const struct flash_cntx *cntx,
 		if (_die_id != die_id)
 		{
 			_die_id = die_id;
-			spi_nand_protocol_die_select_2(spi_controller, die_id);
+			spi_nand_protocol_die_select_2(spi_controller, spi_controller_priv, die_id);
 
 			_SPI_NAND_DEBUG_PRINTF(SPI_NAND_FLASH_DEBUG_LEVEL_2, "spi_nand_protocol_die_select_2: die_id=0x%x\n", die_id);
 		}
@@ -733,7 +767,7 @@ static bool spi_nand_check_ecc_status(const struct flash_cntx *cntx, uint32_t pa
 	PREAMBLE(cntx);
 	uint8_t status;
 
-	spi_nand_protocol_get_status_reg_3(spi_controller, &status);
+	spi_nand_protocol_get_status_reg_3(spi_controller, spi_controller_priv, &status);
 
 	spi_nand_dbg("ecc status = 0x%x\n", status);
 
@@ -758,7 +792,7 @@ static int spi_nand_load_page_into_cache(const struct flash_cntx *cntx,
 
 	/*  Checking status for load page/erase/program complete */
 	do {
-		spi_nand_protocol_get_status_reg_3(spi_controller, &status);
+		spi_nand_protocol_get_status_reg_3(spi_controller, spi_controller_priv, &status);
 	} while( status & _SPI_NAND_VAL_OIP) ;
 
 	spi_nand_dbg("loaded page into cache: status = 0x%x\n", status);
@@ -801,18 +835,18 @@ static int spi_nand_erase_block (const struct flash_cntx *cntx, uint32_t block_i
 	spi_nand_select_die(cntx, (block_index << _SPI_NAND_BLOCK_ROW_ADDRESS_OFFSET));
 
 	/* 2.2 Enable write_to flash */
-	spi_nand_protocol_write_enable(spi_controller);
+	spi_nand_protocol_write_enable(spi_controller, spi_controller_priv);
 
 	/* 2.3 Erasing one block */
-	spi_nand_protocol_block_erase(spi_controller, block_index);
+	spi_nand_protocol_block_erase(spi_controller, spi_controller_priv, block_index);
 
 	/* 2.4 Checking status for erase complete */
 	do {
-		spi_nand_protocol_get_status_reg_3(spi_controller, &status);
+		spi_nand_protocol_get_status_reg_3(spi_controller, spi_controller_priv, &status);
 	} while( status & _SPI_NAND_VAL_OIP) ;
 
 	/* 2.5 Disable write_flash */
-	spi_nand_protocol_write_disable(spi_controller);
+	spi_nand_protocol_write_disable(spi_controller, spi_controller_priv);
 
 	/* 2.6 Check Erase Fail Bit */
 	if( status & _SPI_NAND_VAL_ERASE_FAIL )
@@ -834,7 +868,7 @@ static int spi_nand_erase_internal(const struct flash_cntx *cntx, uint32_t addr,
 	spi_nand_dbg("spi_nand_erase_internal (in): addr = 0x%x, len = 0x%x\n", addr, len);
 
 	/* Switch to manual mode*/
-	spi_controller_enable_manual_mode(spi_controller);
+	spi_controller_enable_manual_mode(spi_controller, spi_controller_priv);
 
 	/* 1. Check the address and len must aligned to NAND Flash block size */
 	if(!spi_nand_block_aligned_check(cntx, addr, len) == SPI_NAND_FLASH_RTN_NO_ERROR)
@@ -904,7 +938,7 @@ static int spi_nand_read_page(const struct flash_cntx *cntx, uint32_t page_numbe
 
 	assert(buf);
 
-	spi_controller_enable_manual_mode(spi_controller);
+	spi_controller_enable_manual_mode(spi_controller, spi_controller_priv);
 
 	/* Load Page into cache of NAND Flash Chip */
 	if( spi_nand_load_page_into_cache(cntx, page_number) == SPI_NAND_FLASH_RTN_DETECTED_BAD_BLOCK )
@@ -991,7 +1025,7 @@ static SPI_NAND_FLASH_RTN_T spi_nand_write_page(const struct flash_cntx *cntx,
 	write_addr = 0;
 
 	/* Switch to manual mode*/
-	spi_controller_enable_manual_mode(spi_controller);
+	spi_controller_enable_manual_mode(spi_controller, spi_controller_priv);
 
 	/* First clear the whole buffer including the OOB area*/
 	memset(spi_nand_priv->page_buffer, 0xff, spi_nand_priv->page_buffer_sz);
@@ -1090,12 +1124,12 @@ static SPI_NAND_FLASH_RTN_T spi_nand_write_page(const struct flash_cntx *cntx,
 				speed_mode);
 
 		/* Enable write_to flash */
-		spi_nand_protocol_write_enable(spi_controller);
+		spi_nand_protocol_write_enable(spi_controller, spi_controller_priv);
 	}
 	else
 	{
 		/* Enable write_to flash */
-		spi_nand_protocol_write_enable(spi_controller);
+		spi_nand_protocol_write_enable(spi_controller, spi_controller_priv);
 
 		/* Program data into buffer of SPI NAND chip */
 		spi_nand_protocol_program_load(cntx, write_addr, spi_nand_priv->page_buffer,
@@ -1104,17 +1138,17 @@ static SPI_NAND_FLASH_RTN_T spi_nand_write_page(const struct flash_cntx *cntx,
 	}
 
 	/* Execute program data into SPI NAND chip  */
-	spi_nand_protocol_program_execute(spi_controller, page_number);
+	spi_nand_protocol_program_execute(spi_controller, spi_controller_priv, page_number);
 
 	/* Checking status for erase complete */
 	do {
-		spi_nand_protocol_get_status_reg_3(spi_controller, &status);
+		spi_nand_protocol_get_status_reg_3(spi_controller, spi_controller_priv, &status);
 	} while( status & _SPI_NAND_VAL_OIP) ;
 
 	/*. Disable write_flash */
-	spi_nand_protocol_write_disable(spi_controller);
+	spi_nand_protocol_write_disable(spi_controller, spi_controller_priv);
 
-	spi_nand_protocol_get_status_reg_1(spi_controller, &status_2);
+	spi_nand_protocol_get_status_reg_1(spi_controller, spi_controller_priv, &status_2);
 
 	_SPI_NAND_DEBUG_PRINTF(SPI_NAND_FLASH_DEBUG_LEVEL_1, "[spi_nand_write_page]: status 1 = 0x%x, status 3 = 0x%x\n", status_2, status);
 
@@ -1292,39 +1326,43 @@ static int spi_nand_probe_matchid(const struct spi_nand_id *flash_info, void *da
 	return 0;
 }
 
-static int spi_nand_probe(const struct spi_controller *spi_controller,
-		struct spi_nand_priv *ptr_rtn_device_t )
+static int spi_nand_probe(const struct flash_cntx *cntx, struct spi_nand_priv *priv)
 {
+	PREAMBLE(cntx);
+	int ret;
+
 	spi_nand_dbg("probe start\n");
 
 	/* Protocol for read id */
 	spi_nand_dbg("Trying to get ID\n");
-	spi_nand_protocol_read_id(spi_controller, ptr_rtn_device_t);
+	ret = spi_nand_protocol_read_id(spi_controller, spi_controller_priv, priv);
+	if (ret)
+		return ret;
 
-	if (spi_nand_flash_foreach(spi_nand_probe_matchid, ptr_rtn_device_t))
+	if (spi_nand_flash_foreach(spi_nand_probe_matchid, priv))
 		goto found;
 
 	/* Another protocol for read id  (For example, the GigaDevice SPI NAND chip for Type C */
-	spi_nand_protocol_read_id_2(spi_controller, ptr_rtn_device_t);
-	if (spi_nand_flash_foreach(spi_nand_probe_matchid, ptr_rtn_device_t))
+	spi_nand_protocol_read_id_2(spi_controller, spi_controller_priv, priv);
+	if (spi_nand_flash_foreach(spi_nand_probe_matchid, priv))
 		goto found;
 
 	/* Another protocol for read id  (For example, the Toshiba/KIOXIA SPI NAND chip */
-	spi_nand_protocol_read_id_3( spi_controller, ptr_rtn_device_t);
-	if (spi_nand_flash_foreach(spi_nand_probe_matchid, ptr_rtn_device_t))
+	spi_nand_protocol_read_id_3(spi_controller, spi_controller_priv, priv);
+	if (spi_nand_flash_foreach(spi_nand_probe_matchid, priv))
 		goto found;
 
 	return -ENODEV;
 
 found:
-	spi_nand_dbg("mfr_id = 0x%x, dev_id = 0x%x\n", ptr_rtn_device_t->mfr_id, ptr_rtn_device_t->dev_id);
+	spi_nand_dbg("mfr_id = 0x%x, dev_id = 0x%x\n", priv->mfr_id, priv->dev_id);
 
 	unsigned char feature = 0;
-	spi_nand_protocol_get_status_reg_1(spi_controller, &feature);
+	spi_nand_protocol_get_status_reg_1(spi_controller, spi_controller_priv, &feature);
 	spi_nand_dbg("Get Status Register 1: 0x%02x\n", feature);
-	spi_nand_protocol_get_status_reg_2(spi_controller,&feature);
+	spi_nand_protocol_get_status_reg_2(spi_controller, spi_controller_priv, &feature);
 	spi_nand_dbg("Get Status Register 2: 0x%02x\n", feature);
-	spi_nand_manufacturer_init(spi_controller, ptr_rtn_device_t);
+	spi_nand_manufacturer_init(spi_controller, priv);
 
 	spi_nand_dbg("probe end \n");
 
@@ -1349,18 +1387,18 @@ static int spi_nand_enable_ondie_ecc(const struct flash_cntx *cntx)
 
 		for(int i = 0; i < die_num; i++) {
 			int ECC_fcheck = 1;
-			spi_nand_protocol_die_select_1(spi_controller, i);
+			spi_nand_protocol_die_select_1(spi_controller, spi_controller_priv, i);
 
-			spi_nand_protocol_get_status_reg_2(spi_controller,&feature);
+			spi_nand_protocol_get_status_reg_2(spi_controller, spi_controller_priv, &feature);
 			_SPI_NAND_DEBUG_PRINTF(SPI_NAND_FLASH_DEBUG_LEVEL_1, "before setting : SPI_NAND_Flash_Enable_OnDie_ECC, status reg = 0x%x\n", feature);
 			if (ECC_fcheck)
 				feature |= 0x10;
 			else
 				feature &= ~(1 << 4);
-			spi_nand_protocol_set_status_reg_2(spi_controller,feature);
+			spi_nand_protocol_set_status_reg_2(spi_controller, spi_controller_priv, feature);
 
 			/* Value check*/
-			spi_nand_protocol_get_status_reg_2(spi_controller,&feature);
+			spi_nand_protocol_get_status_reg_2(spi_controller, spi_controller_priv, &feature);
 			_SPI_NAND_DEBUG_PRINTF(SPI_NAND_FLASH_DEBUG_LEVEL_1, "after setting : SPI_NAND_Flash_Enable_OnDie_ECC, status reg = 0x%x\n", feature);
 		}
 	} else if(spi_nand_feature(spi_nand_priv) & SPI_NAND_FLASH_DIE_SELECT_2_HAVE) {
@@ -1368,18 +1406,18 @@ static int spi_nand_enable_ondie_ecc(const struct flash_cntx *cntx)
 
 		for(int i = 0; i < die_num; i++) {
 			int ECC_fcheck = 1;
-			spi_nand_protocol_die_select_2(spi_controller, i);
+			spi_nand_protocol_die_select_2(spi_controller, spi_controller_priv, i);
 
-			spi_nand_protocol_get_status_reg_2(spi_controller,&feature);
+			spi_nand_protocol_get_status_reg_2(spi_controller, spi_controller_priv, &feature);
 			_SPI_NAND_DEBUG_PRINTF(SPI_NAND_FLASH_DEBUG_LEVEL_1, "before setting : SPI_NAND_Flash_Enable_OnDie_ECC, status reg = 0x%x\n", feature);
 			if (ECC_fcheck)
 				feature |= 0x10;
 			else
 				feature &= ~(1 << 4);
-			spi_nand_protocol_set_status_reg_2(spi_controller,feature);
+			spi_nand_protocol_set_status_reg_2(spi_controller, spi_controller_priv, feature);
 
 			/* Value check*/
-			spi_nand_protocol_get_status_reg_2(spi_controller,&feature);
+			spi_nand_protocol_get_status_reg_2(spi_controller, spi_controller_priv, &feature);
 			_SPI_NAND_DEBUG_PRINTF(SPI_NAND_FLASH_DEBUG_LEVEL_1, "after setting : SPI_NAND_Flash_Enable_OnDie_ECC, status reg = 0x%x\n", feature);
 		}
 	} else {
@@ -1389,32 +1427,32 @@ static int spi_nand_enable_ondie_ecc(const struct flash_cntx *cntx)
 			(mfr_id == _SPI_NAND_MANUFACTURER_ID_XTX && dev_id == _SPI_NAND_DEVICE_ID_XT26G02B) )
 		{
 			int ECC_fcheck = 1;
-			spi_nand_protocol_get_feature(spi_controller, _SPI_NAND_ADDR_ECC, &feature);
+			spi_nand_protocol_get_feature(spi_controller, spi_controller_priv, _SPI_NAND_ADDR_ECC, &feature);
 			_SPI_NAND_DEBUG_PRINTF(SPI_NAND_FLASH_DEBUG_LEVEL_1, "before setting : SPI_NAND_Flash_Enable_OnDie_ECC, ecc reg = 0x%x\n", feature);
 			if (ECC_fcheck)
 				feature |= 0x10;
 			else
 				feature &= ~(1 << 4);
-			spi_nand_protocol_set_feature(spi_controller, _SPI_NAND_ADDR_ECC, feature);
+			spi_nand_protocol_set_feature(spi_controller, spi_controller_priv, _SPI_NAND_ADDR_ECC, feature);
 
 			/* Value check*/
-			spi_nand_protocol_get_feature(spi_controller, _SPI_NAND_ADDR_ECC, &feature);
+			spi_nand_protocol_get_feature(spi_controller, spi_controller_priv, _SPI_NAND_ADDR_ECC, &feature);
 			_SPI_NAND_DEBUG_PRINTF(SPI_NAND_FLASH_DEBUG_LEVEL_1, "after setting : SPI_NAND_Flash_Enable_OnDie_ECC, ecc reg = 0x%x\n", feature);
 		}
 		else
 		{
 			int ECC_fcheck = 1;
-			spi_nand_protocol_get_status_reg_2(spi_controller, &feature);
+			spi_nand_protocol_get_status_reg_2(spi_controller, spi_controller_priv, &feature);
 			_SPI_NAND_DEBUG_PRINTF(SPI_NAND_FLASH_DEBUG_LEVEL_1, "before setting : SPI_NAND_Flash_Enable_OnDie_ECC, status reg = 0x%x\n", feature);
 
 			if (ECC_fcheck)
 				feature |= 0x10;
 			else
 				feature &= ~(1 << 4);
-			spi_nand_protocol_set_status_reg_2(spi_controller,feature);
+			spi_nand_protocol_set_status_reg_2(spi_controller, spi_controller_priv, feature);
 
 			/* Value check*/
-			spi_nand_protocol_get_status_reg_2(spi_controller,&feature);
+			spi_nand_protocol_get_status_reg_2(spi_controller, spi_controller_priv, &feature);
 			_SPI_NAND_DEBUG_PRINTF(SPI_NAND_FLASH_DEBUG_LEVEL_1, "after setting : SPI_NAND_Flash_Enable_OnDie_ECC, status reg = 0x%x\n", feature);
 		}
 	}
@@ -1432,10 +1470,10 @@ static int spi_nand_chip_init(const struct flash_cntx *cntx, struct spi_nand_pri
 	PREAMBLE(cntx);
 
 	/* Enable Manual Mode */
-	spi_controller_enable_manual_mode(spi_controller);
+	spi_controller_enable_manual_mode(spi_controller, spi_controller_priv);
 
 	/* Probe flash information */
-	if (spi_nand_probe(spi_controller, flashinfo))
+	if (spi_nand_probe(cntx, flashinfo))
 	{
 		spi_nand_err("SPI NAND Flash Not Detected!\n");
 		return -ENODEV;
@@ -1552,9 +1590,11 @@ static int spi_nand_identify(const struct flash_cntx *cntx)
 	int ret;
 
 	/* Enable OTP access */
-	spi_nand_protocol_get_status_reg_2(spi_controller, &status2);
+	spi_nand_protocol_get_status_reg_2(spi_controller, spi_controller_priv,
+		&status2);
 	status2 |= SPI_NAND_STATUS2_OTPE;
-	spi_nand_protocol_set_status_reg_2(spi_controller, status2);
+	spi_nand_protocol_set_status_reg_2(spi_controller, spi_controller_priv,
+		status2);
 
 	spi_nand_info("Reading unique id from device\n");
 	ret = spi_nand_read_page(cntx, SPI_NAND_OTP_PAGE_UNIQUEID,
@@ -1594,9 +1634,11 @@ static int spi_nand_identify(const struct flash_cntx *cntx)
 
 out:
 	/* Disable OTP access */
-	spi_nand_protocol_get_status_reg_2(spi_controller, &status2);
+	spi_nand_protocol_get_status_reg_2(spi_controller, spi_controller_priv,
+		&status2);
 	status2 &= ~SPI_NAND_STATUS2_OTPE;
-	spi_nand_protocol_set_status_reg_2(spi_controller, status2);
+	spi_nand_protocol_set_status_reg_2(spi_controller, spi_controller_priv,
+		status2);
 
 	return ret;
 }
@@ -1611,7 +1653,8 @@ static int spi_nand_lockunlock(const struct flash_cntx *cntx, uint32_t offset, u
 	if (!spi_nand_priv->id->set_bp_from_status)
 		return -EINVAL;
 
-	ret = spi_nand_protocol_get_status_reg_1(spi_controller, &status_reg);
+	ret = spi_nand_protocol_get_status_reg_1(spi_controller, spi_controller_priv,
+		&status_reg);
 	if (ret)
 		return ret;
 
@@ -1619,14 +1662,16 @@ static int spi_nand_lockunlock(const struct flash_cntx *cntx, uint32_t offset, u
 	if (ret)
 		return ret;
 
-	ret = spi_nand_protocol_set_status_reg_1(spi_controller, status_reg);
+	ret = spi_nand_protocol_set_status_reg_1(spi_controller, spi_controller_priv,
+		status_reg);
 	if (ret) {
 		spi_nand_err("Failed to update status register for lock/unlock: %d\n", ret);
 		return ret;
 	}
 
 	if (spi_nand_priv->id->fill_bp_status) {
-		spi_nand_protocol_get_status_reg_1(spi_controller, &status_reg);
+		spi_nand_protocol_get_status_reg_1(spi_controller, spi_controller_priv,
+			&status_reg);
 		spi_nand_priv->id->fill_bp_status(status_reg, cntx->status);
 	}
 
@@ -1660,6 +1705,8 @@ int spi_nand_init(const struct spi_controller *spi_controller,
 	assert(spi_controller);
 	assert(flash);
 	assert(cmdline);
+
+	void *spi_controller_priv = flash->spi_controller_priv;
 
 	struct spi_nand_priv *spi_nand_priv = malloc(sizeof(*spi_nand_priv));
 	if (!spi_nand_priv)
@@ -1700,7 +1747,8 @@ int spi_nand_init(const struct spi_controller *spi_controller,
 
 		if (spi_nand_priv->id->fill_bp_status) {
 			uint8_t status;
-			spi_nand_protocol_get_status_reg_1(spi_controller, &status);
+			spi_nand_protocol_get_status_reg_1(spi_controller, spi_controller_priv,
+				&status);
 			spi_nand_priv->id->fill_bp_status(status, flash->status);
 		}
 

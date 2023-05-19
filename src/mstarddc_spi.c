@@ -32,6 +32,7 @@
 struct mstarddc_spi_data {
 	log_cb log_cb;
 	const struct i2c_controller *i2c_controller;
+	void *i2c_controller_priv;
 	int doreset;
 };
 
@@ -43,15 +44,15 @@ struct mstarddc_spi_data {
 #define MSTARDDC_SPI_RESET	0x24
 
 /* Returns 0 upon success, a negative number upon errors. */
-static int mstarddc_spi_shutdown(const struct spi_controller *spi_controller)
+static int mstarddc_spi_shutdown(const struct spi_controller *spi_controller, void *priv)
 {
-	struct mstarddc_spi_data *mstarddc_data;
+	struct mstarddc_spi_data *mstarddc_data = priv;
 
 	assert(spi_controller);
+	assert(mstarddc_data);
 
-	mstarddc_data = spi_controller_get_client_data(spi_controller);
-
-	i2c_controller_shutdown(mstarddc_data->i2c_controller);
+	i2c_controller_shutdown(mstarddc_data->i2c_controller,
+				mstarddc_data->i2c_controller_priv);
 
 	free(mstarddc_data);
 
@@ -82,14 +83,14 @@ static int mstarddc_spi_send_command(const struct spi_controller *spi_controller
 		unsigned int writecnt,
 		unsigned int readcnt,
 		const unsigned char *writearr,
-		unsigned char *readarr)
+		unsigned char *readarr,
+		void *priv)
 {
 	int ret = 0;
-	struct mstarddc_spi_data *mstarddc_data;
+	struct mstarddc_spi_data *mstarddc_data = priv;
 
 	assert(spi_controller);
-
-	mstarddc_data = spi_controller_get_client_data(spi_controller);
+	assert(mstarddc_data);
 
 	mstarddc_dbg("Sending command, write: %d, read %d\n", writecnt, readcnt);
 
@@ -148,15 +149,12 @@ static int mstarddc_spi_send_command(const struct spi_controller *spi_controller
 	return ret;
 }
 
-static int mstarddc_spi_end_command(const struct spi_controller *spi_controller)
+static int mstarddc_spi_end_command(const struct spi_controller *spi_controller, void *priv)
 {
 	uint8_t cmd[] = {  MSTARDDC_SPI_END };
-	struct mstarddc_spi_data *mstarddc_data;
+	struct mstarddc_spi_data *mstarddc_data = priv;
 
 	assert(spi_controller);
-
-	mstarddc_data = spi_controller_get_client_data(spi_controller);
-
 	assert(mstarddc_data);
 
 	mstarddc_dbg("Sending SPI end command\n");
@@ -164,18 +162,16 @@ static int mstarddc_spi_end_command(const struct spi_controller *spi_controller)
 	return i2c_controller_cmd(mstarddc_data->i2c_controller, cmd, sizeof(cmd));
 }
 
-static int mstarddc_spi_enableisp(const struct spi_controller *spi_controller)
+static int mstarddc_spi_enableisp(const struct spi_controller *spi_controller, void *spi_controller_priv)
 {
 	uint8_t cmd[5] = { 'M', 'S', 'T', 'A', 'R' };
-	struct mstarddc_spi_data *mstarddc_data;
+	struct mstarddc_spi_data *mstarddc_data = spi_controller_priv;
 	int ret;
-
-	mstarddc_data = spi_controller_get_client_data(spi_controller);
 
 	ret = i2c_controller_cmd(mstarddc_data->i2c_controller, cmd, sizeof(cmd));
 
 	if (ret)
-		ret = mstarddc_spi_end_command(spi_controller);
+		ret = mstarddc_spi_end_command(spi_controller, spi_controller_priv);
 
 	return ret;
 }
@@ -212,7 +208,7 @@ static int mstarddc_parse_connstr(const char *connection, int *i2c_addr, char **
 }
 
 /* Returns 0 upon success, a negative number upon errors. */
-static int mstarddc_spi_init(const struct spi_controller *spi_controller, log_cb log_cb, const char *connection)
+static int mstarddc_spi_open(const struct spi_controller *spi_controller, log_cb log_cb, const char *connection, void **priv)
 {
 	int ret = 0;
 	int mstarddc_addr;
@@ -269,10 +265,10 @@ static int mstarddc_spi_init(const struct spi_controller *spi_controller, log_cb
 	mstarddc_data->i2c_controller = i2c_controller;
 	mstarddc_data->doreset = mstarddc_doreset;
 
-	spi_controller_set_client_data(spi_controller, mstarddc_data, false);
+	*priv = mstarddc_data;
 
 	// Enable ISP mode
-	ret = mstarddc_spi_enableisp(spi_controller);
+	ret = mstarddc_spi_enableisp(spi_controller, *priv);
 
 out:
 	free(i2c_connstr);
@@ -280,13 +276,13 @@ out:
 	return ret;
 }
 
-static int mstarddc_spi_maxtransfer(const struct spi_controller *spi_controller)
+static int mstarddc_spi_maxtransfer(const struct spi_controller *spi_controller, void *priv)
 {
-	struct mstarddc_spi_data *mstarddc_data;
+	struct mstarddc_spi_data *mstarddc_data = priv;
 
 	assert(spi_controller);
+	assert(mstarddc_data);
 
-	mstarddc_data = spi_controller_get_client_data(spi_controller);
 	if (mstarddc_data->i2c_controller) {
 		if(i2c_controller_can_mangle(mstarddc_data->i2c_controller)) {
 			return 2048;
@@ -306,16 +302,13 @@ static const char *mstarddc_connstring_format(const struct spi_controller *spi_c
 	return "<i2c address>@<i2c programmer name>:<programmer connstring> i.e 49@i2cdev:/dev/i2c-10 or 49@ch341a";
 }
 
-static struct spi_client mstarddc_client;
-
 const struct spi_controller mstarddc_spictrl = {
 	.name = "mstarddc",
-	.init = mstarddc_spi_init,
+	.open = mstarddc_spi_open,
 	.shutdown = mstarddc_spi_shutdown,
 	.send_command = mstarddc_spi_send_command,
 	.cs_release = mstarddc_spi_end_command,
 	.max_transfer = mstarddc_spi_maxtransfer,
 	.need_connstring = mstarddc_need_connstring,
 	.connstring_format = mstarddc_connstring_format,
-	.client = &mstarddc_client,
 };

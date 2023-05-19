@@ -9,9 +9,7 @@
 #include "spi_flash.h"
 #include "spi_nor_ids.h"
 
-int spi_nor_init(const struct spi_controller *spi_controller, struct flash_cntx *flash);
+int spi_nor_init(struct flash_cntx *flash);
 void spi_nor_flash_foreach(void (*cb)(const struct chip_info *flash_info));
-
-
 
 #endif /* __SNORCMD_API_H__ */

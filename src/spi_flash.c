@@ -9,6 +9,7 @@
 #include "spi_nor_flash.h"
 
 int spi_flash_init(const struct spi_controller *spi_controller,
+		void *spi_controller_priv,
 		struct flash_cntx *flash_cntx,
 		const struct ui_parsed_cmdline *cmdline)
 {
@@ -17,12 +18,13 @@ int spi_flash_init(const struct spi_controller *spi_controller,
 	assert(cmdline);
 
 	flash_cntx->spi_controller = spi_controller;
+	flash_cntx->spi_controller_priv = spi_controller_priv;
 
 	int ret = spi_nand_init(spi_controller, flash_cntx, cmdline);
 	if (!ret)
 		return 0;
 
-	ret = spi_nor_init(spi_controller, flash_cntx);
+	ret = spi_nor_init(flash_cntx);
 	if (!ret)
 		return 0;
 

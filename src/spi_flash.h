@@ -10,7 +10,8 @@
 #include "spi_controller.h"
 
 int spi_flash_init(const struct spi_controller *spi_controller,
-		struct flash_cntx *flash_cntx,
-		const struct ui_parsed_cmdline *cmdline);
+		   void *spi_controller_priv,
+		   struct flash_cntx *flash_cntx,
+		   const struct ui_parsed_cmdline *cmdline);
 
 #endif /* __FLASHCMD_API_H__ */
