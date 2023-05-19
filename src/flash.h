@@ -71,7 +71,11 @@ struct flash_cntx {
 	struct flash_org org;
 	struct flash_status *status;
 
+#ifdef CONFIG_NEED_I2C
 	const struct i2c_controller *i2c_controller;
+	void *i2c_controller_priv;
+#endif
+
 	const struct spi_controller *spi_controller;
 	void *spi_controller_priv;
 

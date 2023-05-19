@@ -171,13 +171,17 @@ static const struct flash_ops i2c_eeprom_flash_ops = {
 	.read  = i2c_eeprom_read,
 };
 
-int i2c_eeprom_init(const struct i2c_controller *i2c_controller, struct flash_cntx *flash,
-					const struct ui_parsed_cmdline *cmdline)
+int i2c_eeprom_init(const struct i2c_controller *i2c_controller, void *i2c_controller_priv,
+		struct flash_cntx *flash, const struct ui_parsed_cmdline *cmdline)
 {
+	assert(i2c_controller);
+
+	flash->i2c_controller = i2c_controller;
+	flash->i2c_controller_priv = i2c_controller_priv;
+
 	flash->ops = &i2c_eeprom_flash_ops;
 	flash->org.device_size = cmdline->eepromid->size;
 	flash->org.block_size = cmdline->eepromid->page_size;
-	flash->i2c_controller = i2c_controller;
 
 	return 0;
 }

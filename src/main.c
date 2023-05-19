@@ -182,6 +182,7 @@ static int do_write(const struct flash_cntx *flash, const struct ui_parsed_cmdli
 
 #ifdef CONFIG_EEPROM
 static const struct i2c_controller *i2c_controller = NULL;
+static void *i2c_controller_priv = NULL;
 #endif
 static const struct spi_controller *spi_controller = NULL;
 static void *spi_controller_priv = NULL;
@@ -190,7 +191,7 @@ static void cleanup(void)
 {
 #ifdef CONFIG_EEPROM
 	if (i2c_controller)
-		i2c_controller_shutdown(i2c_controller);
+		i2c_controller_shutdown(i2c_controller, i2c_controller_priv);
 #endif
 
 	if (spi_controller)
@@ -221,7 +222,7 @@ static int init_eeprom(struct flash_cntx *flash, struct ui_parsed_cmdline *cmdli
 			return -ENODEV;
 		}
 
-		ret = i2c_controller_init(i2c_controller, ui_printf, NULL);
+		ret = i2c_controller_open(i2c_controller, ui_printf, cmdline->connstring, &flash->i2c_controller_priv);
 		if (ret) {
 			main_err("Failed to init i2c controller for EEPROM operation: %d\n", ret);
 			return ret;
@@ -250,7 +251,6 @@ int main(int argc, char** argv)
 	signal(SIGINT, sigterm);
 
 	struct flash_cntx flash = { 0 };
-
 
 	ui_title();
 
