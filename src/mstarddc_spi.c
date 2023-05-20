@@ -31,6 +31,7 @@
 
 struct mstarddc_spi_data {
 	log_cb log_cb;
+	uint8_t addr;
 	const struct i2c_controller *i2c_controller;
 	void *i2c_controller_priv;
 	int doreset;
@@ -70,7 +71,8 @@ static int mstarddc_spi_status(struct mstarddc_spi_data *mstarddc_data)
 
 	do  {
 		ret = i2c_controller_write_then_read(mstarddc_data->i2c_controller,
-				cmd, sizeof(cmd), result, sizeof(result));
+				mstarddc_data->addr, cmd, sizeof(cmd), result, sizeof(result),
+				mstarddc_data->i2c_controller_priv);
 
 		printf("status: %x\n", (unsigned) result[0]);
 	} while (result[0] != 0x80 && result[0] != 0xc0);
@@ -106,7 +108,8 @@ static int mstarddc_spi_send_command(const struct spi_controller *spi_controller
 			cmd[0] = MSTARDDC_SPI_WRITE;
 			memcpy(cmd + 1, writearr, writecnt);
 
-			ret = i2c_controller_cmd(mstarddc_data->i2c_controller, cmd, cmdsz);
+			ret = i2c_controller_cmd(mstarddc_data->i2c_controller, mstarddc_data->addr,
+				cmd, cmdsz, mstarddc_data->i2c_controller_priv);
 
 			free(cmd);
 		}
@@ -115,8 +118,8 @@ static int mstarddc_spi_send_command(const struct spi_controller *spi_controller
 	if (!ret && readcnt) {
 		uint8_t cmd = MSTARDDC_SPI_READ;
 
-		ret = i2c_controller_write_then_read(mstarddc_data->i2c_controller,
-				&cmd,1, readarr, readcnt);
+		ret = i2c_controller_write_then_read(mstarddc_data->i2c_controller, mstarddc_data->addr,
+				&cmd,1, readarr, readcnt, mstarddc_data->i2c_controller_priv);
 	}
 
 #ifdef MSTARDDC_DEBUG
@@ -159,7 +162,8 @@ static int mstarddc_spi_end_command(const struct spi_controller *spi_controller,
 
 	mstarddc_dbg("Sending SPI end command\n");
 
-	return i2c_controller_cmd(mstarddc_data->i2c_controller, cmd, sizeof(cmd));
+	return i2c_controller_cmd(mstarddc_data->i2c_controller, mstarddc_data->addr,
+		cmd, sizeof(cmd), mstarddc_data->i2c_controller_priv);
 }
 
 static int mstarddc_spi_enableisp(const struct spi_controller *spi_controller, void *spi_controller_priv)
@@ -168,7 +172,8 @@ static int mstarddc_spi_enableisp(const struct spi_controller *spi_controller, v
 	struct mstarddc_spi_data *mstarddc_data = spi_controller_priv;
 	int ret;
 
-	ret = i2c_controller_cmd(mstarddc_data->i2c_controller, cmd, sizeof(cmd));
+	ret = i2c_controller_cmd(mstarddc_data->i2c_controller, mstarddc_data->addr,
+		cmd, sizeof(cmd), mstarddc_data->i2c_controller_priv);
 
 	if (ret)
 		ret = mstarddc_spi_end_command(spi_controller, spi_controller_priv);
@@ -214,6 +219,7 @@ static int mstarddc_spi_open(const struct spi_controller *spi_controller, log_cb
 	int mstarddc_addr;
 	int mstarddc_doreset = 1;
 	struct i2c_controller *i2c_controller;
+	void *i2c_controller_priv;
 	char *i2c_progname, *i2c_connstr;
 
 	ret = mstarddc_parse_connstr(connection, &mstarddc_addr, &i2c_progname, &i2c_connstr);
@@ -224,10 +230,9 @@ static int mstarddc_spi_open(const struct spi_controller *spi_controller, log_cb
 	if (!i2c_controller)
 		return -ENODEV;
 
-	ret = i2c_controller_init(i2c_controller, log_cb, i2c_connstr);
+	ret = i2c_controller_open(i2c_controller, log_cb, i2c_connstr, &i2c_controller_priv);
 	if (ret)
 		return ret;
-	i2c_controller_set_addr(i2c_controller, mstarddc_addr);
 
 	mstarddc_dbg("Will try to use device %s and address 0x%02x.\n", i2c_connstr, mstarddc_addr);
 
@@ -263,7 +268,9 @@ static int mstarddc_spi_open(const struct spi_controller *spi_controller, log_cb
 	}
 
 	mstarddc_data->i2c_controller = i2c_controller;
+	mstarddc_data->i2c_controller_priv = i2c_controller_priv;
 	mstarddc_data->doreset = mstarddc_doreset;
+	mstarddc_data->addr = mstarddc_addr;
 
 	*priv = mstarddc_data;
 
