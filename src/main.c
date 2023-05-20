@@ -222,13 +222,13 @@ static int init_eeprom(struct flash_cntx *flash, struct ui_parsed_cmdline *cmdli
 			return -ENODEV;
 		}
 
-		ret = i2c_controller_open(i2c_controller, ui_printf, cmdline->connstring, &flash->i2c_controller_priv);
+		ret = i2c_controller_open(i2c_controller, ui_printf, cmdline->connstring, &i2c_controller_priv);
 		if (ret) {
 			main_err("Failed to init i2c controller for EEPROM operation: %d\n", ret);
 			return ret;
 		}
 
-		ret = i2c_eeprom_init(i2c_controller, flash, cmdline);
+		ret = i2c_eeprom_init(i2c_controller, i2c_controller_priv, flash, cmdline);
 		if (ret) {
 			main_err("Failed to init i2c EEPROM for EEPROM operation: %d\n", ret);
 			return ret;

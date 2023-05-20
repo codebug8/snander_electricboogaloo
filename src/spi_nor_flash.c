@@ -41,9 +41,11 @@ static int spi_nor_read_status_reg(const struct flash_cntx *cntx, u8 *val);
 static int spi_nor_write_status_reg(const struct flash_cntx *cntx, u8 val);
 
 #define PREAMBLE(_cntx) \
-		const struct spi_controller *spi_controller = cntx->spi_controller; \
+		const struct spi_controller *spi_controller __attribute__ ((unused)); \
+		spi_controller = cntx->spi_controller; \
 		assert(spi_controller); \
-		void *spi_controller_priv = cntx->spi_controller_priv; \
+		void *spi_controller_priv __attribute__ ((unused)); \
+		spi_controller_priv = cntx->spi_controller_priv; \
 		const struct chip_info *spi_chip_info = flash_get_priv(_cntx); \
 		assert(spi_chip_info)
 

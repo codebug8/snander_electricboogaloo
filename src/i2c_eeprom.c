@@ -13,6 +13,7 @@
 #include <dgputil.h>
 
 #include "i2c_controller.h"
+#include "i2c_eeprom_api.h"
 #include "i2c_eeprom_ids.h"
 #include "spi_flash.h"
 #include "timer.h"
@@ -23,6 +24,7 @@
 int i2c_eeprom_read(const struct flash_cntx *cntx, uint8_t *buf, uint32_t from, uint32_t len)
 {
 	const struct i2c_controller *i2c_controller = cntx->i2c_controller;
+	void *i2c_priv = cntx->i2c_controller_priv;
 	int tfrsz;
 
 	assert(i2c_controller);
@@ -42,12 +44,13 @@ int i2c_eeprom_read(const struct flash_cntx *cntx, uint8_t *buf, uint32_t from, 
 
 	timer_start();
 
-	i2c_controller_set_addr(i2c_controller, I2C_EEPROM_ADDR);
 	for (int off = from; off < from + len; off += tfrsz) {
 		int remainder = (from + len) - off;
 		uint8_t addr[] = { (off >> 8) & 0xff, off & 0xff };
 
-		i2c_controller_write_then_read(i2c_controller, addr, sizeof(addr), buf + off, min(tfrsz, remainder));
+		i2c_controller_write_then_read(i2c_controller, I2C_EEPROM_ADDR,
+				addr, sizeof(addr), buf + off, min(tfrsz, remainder),
+				i2c_priv);
 
 		ui_statusbar_read(len, remainder);
 	}
@@ -74,6 +77,7 @@ static void i2c_eeprom_check_can_write_page(const struct flash_cntx *cntx)
 int i2c_eeprom_erase(const struct flash_cntx *cntx, uint32_t from, uint32_t len)
 {
 	const struct i2c_controller *i2c_controller = cntx->i2c_controller;
+	void *i2c_priv = cntx->i2c_controller_priv;
 	uint8_t buf[] = { 0xff };
 
 	assert(i2c_controller);
@@ -85,11 +89,11 @@ int i2c_eeprom_erase(const struct flash_cntx *cntx, uint32_t from, uint32_t len)
 
 	timer_start();
 
-	i2c_controller_set_addr(i2c_controller, I2C_EEPROM_ADDR);
 	for (int off = from; off < from + len; off += 1) {
 		int remainder = (from + len) - off;
 		uint8_t addr[] = { (off >> 8) & 0xff, off & 0xff };
-		i2c_controller_write_then_write(i2c_controller, addr, sizeof(addr), buf, 1);
+		i2c_controller_write_then_write(i2c_controller, I2C_EEPROM_ADDR,
+				addr, sizeof(addr), buf, 1, i2c_priv);
 		ui_statusbar_erase(off - from, len);
 	}
 
@@ -102,6 +106,7 @@ int i2c_eeprom_erase(const struct flash_cntx *cntx, uint32_t from, uint32_t len)
 int i2c_eeprom_write(const struct flash_cntx *cntx, uint8_t *buf, uint32_t to, uint32_t len)
 {
 	const struct i2c_controller *i2c_controller = cntx->i2c_controller;
+	void *i2c_priv = cntx->i2c_controller_priv;
 	int txfr_size = cntx->org.block_size;
 
 	assert(i2c_controller);
@@ -113,12 +118,13 @@ int i2c_eeprom_write(const struct flash_cntx *cntx, uint8_t *buf, uint32_t to, u
 
 	timer_start();
 
-	i2c_controller_set_addr(i2c_controller, I2C_EEPROM_ADDR);
 	for (int off = to; off < to + len; off += txfr_size) {
 		int remainder = (to + len) - off;
 		uint8_t addr[] = { (off >> 8) & 0xff, off & 0xff };
 
-		i2c_controller_write_then_write(i2c_controller, addr, sizeof(addr), buf + off, txfr_size);
+		i2c_controller_write_then_write(i2c_controller, I2C_EEPROM_ADDR,
+				addr, sizeof(addr), buf + off, txfr_size,
+				i2c_priv);
 		usleep(10000);
 
 		ui_statusbar_write(len, remainder);
