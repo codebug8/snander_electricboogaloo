@@ -4,7 +4,7 @@ This is a fork of SNANDer by McMMC. Mainly for use with the MStar DDC
 protocol that is needed to flash MStar/SigmaStar SoC based systems
 over the i2c ISP interface.
 
-I've also done the following:
+I've also done the following: 
 - Replaced the makefile with meson
 - Fixed a few annoying bugs
 - Replaced reading the files into memory with mmap()
